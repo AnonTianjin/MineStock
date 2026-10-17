@@ -200,16 +200,49 @@ public class TradingRepository {
      */
     public List<MarginPosition> findMarginPositionsBySymbol(UUID playerUuid, MarketType market,
                                                             String symbol) throws SQLException {
+        return findMarginPositionsBySymbol(playerUuid, market, symbol, null);
+    }
+
+    /**
+     * 该玩家在指定品种、指定方向上的杠杆持仓（按开仓先后排序）。
+     *
+     * <p>平仓必须带上方向：同一品种可以同时存在多单和空单，只按品种取会把两个方向
+     * 一起平掉，玩家看到的「平掉 200 股」就会变成「多空各平了一部分」。
+     *
+     * @param direction 目标方向；{@code null} 表示不过滤（多空都取）
+     */
+    public List<MarginPosition> findMarginPositionsBySymbol(UUID playerUuid, MarketType market,
+                                                            String symbol, TradeDirection direction)
+            throws SQLException {
         String sql = """
                 SELECT * FROM margin_positions
                 WHERE player_uuid = ? AND market = ? AND symbol = ?
                 ORDER BY id
                 """;
+        if (direction == null) {
+            return queryMarginPositions(sql, playerUuid, market, symbol);
+        }
+        // COALESCE 与 parseDirection 的回退口径保持一致：空方向按多头算。
+        sql = """
+                SELECT * FROM margin_positions
+                WHERE player_uuid = ? AND market = ? AND symbol = ?
+                  AND COALESCE(direction, 'LONG') = ?
+                ORDER BY id
+                """;
+        return queryMarginPositions(sql, playerUuid, market, symbol, direction.name());
+    }
+
+    private List<MarginPosition> queryMarginPositions(String sql, UUID playerUuid, MarketType market,
+                                                      String symbol, String... extra)
+            throws SQLException {
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, playerUuid.toString());
             ps.setString(2, market.name());
             ps.setString(3, symbol);
+            for (int i = 0; i < extra.length; i++) {
+                ps.setString(4 + i, extra[i]);
+            }
             try (ResultSet rs = ps.executeQuery()) {
                 List<MarginPosition> list = new ArrayList<>();
                 while (rs.next()) list.add(mapMargin(rs));

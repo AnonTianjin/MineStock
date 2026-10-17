@@ -635,6 +635,84 @@ public final class SimulationService {
     }
 
     /**
+     * 模拟盘做空：开一条方向为 {@link TradeDirection#SHORT} 的保证金仓位。
+     *
+     * <p>与买入共用 {@link #leveragedOpen}，唯一差别是方向。模拟盘的现金持仓表
+     * （{@code simulation_holdings}）是纯多头模型、没有方向字段，所以做空<b>没有</b>
+     * 现金通道，一律走保证金引擎；{@code leverage <= 0} 时按 1 倍处理（即 100% 保证金）。
+     *
+     * @param leverage 指定杠杆；{@code <= 0} 表示 1 倍
+     */
+    public CompletableFuture<TradeOutcome> shortSell(UUID playerUuid, String code, int quantity,
+                                                    int leverage) {
+        TradeGate gate = tradeGate(code, quantity);
+        if (gate.failure() != null) {
+            return CompletableFuture.completedFuture(gate.failure());
+        }
+        SimulationStock stock = gate.stock();
+        int effective = leverage > 0 ? leverage : 1;
+        return tradePrice(stock).thenCompose(price -> {
+            if (price == null) return fail("trade-no-price");
+            return leveragedOpen(playerUuid, stock, quantity, effective, price,
+                    TradeDirection.SHORT);
+        });
+    }
+
+    /**
+     * 模拟盘回补：平掉方向为 {@link TradeDirection#SHORT} 的保证金仓位。
+     *
+     * <p>只平空单。同一标的可以同时有多单与空单，不分方向地调用
+     * {@code closeQuantity} 会把多单一起平掉。
+     */
+    public CompletableFuture<TradeOutcome> cover(UUID playerUuid, String code, int quantity) {
+        TradeGate gate = tradeGate(code, quantity);
+        if (gate.failure() != null) {
+            return CompletableFuture.completedFuture(gate.failure());
+        }
+        SimulationStock stock = gate.stock();
+        return tradePrice(stock).thenCompose(price -> {
+            if (price == null) return fail("trade-no-price");
+            return closeLeveraged(playerUuid, stock.getCode(), quantity, TradeDirection.SHORT)
+                    .thenApply(closed -> closed == null || closed.closedQuantity() <= 0.0
+                            ? TradeOutcome.fail("simulation-no-short",
+                                    "code", stock.getCode(),
+                                    "amount", String.valueOf(quantity))
+                            : TradeOutcome.ok("simulation-cover-success",
+                                    "code", stock.getCode(),
+                                    "amount", formatQty(closed.closedQuantity()),
+                                    "price", format2(price),
+                                    "total", format2(closed.payout()),
+                                    "fee", format2(closed.fee())));
+        });
+    }
+
+    /**
+     * 平掉该标的的全部空头仓位 —— 供持仓操作菜单的「平空」按钮使用。
+     *
+     * <p>与 {@link #sellAll} 同一条约定：没有仓位时明确报 {@code simulation-no-short}，
+     * 不用哨兵数量去碰运气。
+     */
+    public CompletableFuture<TradeOutcome> coverAll(UUID playerUuid, String code) {
+        String normalized = code == null ? null : code.trim().toUpperCase();
+        if (normalized == null || normalized.isEmpty()) {
+            return fail("simulation-no-short", "code", String.valueOf(code), "amount", "0");
+        }
+        return supplyAsync(() -> shortQuantity(playerUuid, normalized))
+                .thenCompose(held -> held <= 0
+                        ? fail("simulation-no-short", "code", normalized, "amount", "0")
+                        : cover(playerUuid, normalized, held));
+    }
+
+    /** 该玩家在某标的上的空头持仓数量（四舍五入为整数，用于「平空」按钮）。 */
+    public int shortQuantity(UUID playerUuid, String code) {
+        LeverageService leverageService = plugin == null ? null : plugin.getLeverageService();
+        if (leverageService == null) return 0;
+        double total = leverageService.quantityOf(playerUuid, MarketType.SIMULATION, code,
+                TradeDirection.SHORT);
+        return (int) Math.round(total);
+    }
+
+    /**
      * 买卖入口的统一前置校验：① 代码未注册 → ② 未启用 → ③ 停牌 / 禁售 → ④ 数量非法。
      *
      * <p>顺序刻意与 {@link #adminGate} 一致（存在性判定在最前），这样"未知代码"永远得到
@@ -724,24 +802,43 @@ public final class SimulationService {
      */
     private CompletableFuture<TradeOutcome> leveragedBuy(UUID playerUuid, SimulationStock stock,
                                                          int quantity, int leverage, double price) {
+        return leveragedOpen(playerUuid, stock, quantity, leverage, price, TradeDirection.LONG);
+    }
+
+    /**
+     * ⑥ 杠杆路径（按方向）：复用保证金引擎，市场恒为 {@link MarketType#SIMULATION}。
+     *
+     * <p>杠杆区间校验（{@code Policy.of(SIMULATION) == STOCK} ⇒ 股票上限 + enabled 开关）、
+     * 余额校验与扣款、保证金冻结、写库失败退款全部由 {@code LeverageService.open} 负责。
+     */
+    private CompletableFuture<TradeOutcome> leveragedOpen(UUID playerUuid, SimulationStock stock,
+                                                          int quantity, int leverage, double price,
+                                                          TradeDirection direction) {
         LeverageService leverageService = plugin == null ? null : plugin.getLeverageService();
         if (leverageService == null) return fail("db-error");
         double fee = round2(price * quantity * feeRate());
         return leverageService.open(playerUuid, MarketType.SIMULATION, stock.getCode(),
-                TradeDirection.LONG, quantity, price, leverage, fee,
+                direction, quantity, price, leverage, fee,
                 LeverageConfig.Policy.of(MarketType.SIMULATION));
     }
 
-    /** 平掉杠杆部分（市场恒为 SIMULATION）；无杠杆持仓时返回零结果。 */
+    /** 平掉杠杆部分（市场恒为 SIMULATION，不分方向）；无杠杆持仓时返回零结果。 */
     private CompletableFuture<LeverageService.PartialClose> closeLeveraged(UUID playerUuid,
                                                                            String code, int quantity) {
+        return closeLeveraged(playerUuid, code, quantity, TradeDirection.LONG);
+    }
+
+    /** 平掉指定方向的杠杆部分（市场恒为 SIMULATION）；无杠杆持仓时返回零结果。 */
+    private CompletableFuture<LeverageService.PartialClose> closeLeveraged(UUID playerUuid,
+                                                                           String code, int quantity,
+                                                                           TradeDirection direction) {
         LeverageService leverageService = plugin == null ? null : plugin.getLeverageService();
         if (leverageService == null) {
             return CompletableFuture.completedFuture(zeroClose());
         }
         SymbolPriceSource prices = plugin.priceSource();
-        return leverageService.closeQuantity(playerUuid, MarketType.SIMULATION, code, quantity,
-                prices, feeRate());
+        return leverageService.closeQuantity(playerUuid, MarketType.SIMULATION, code, direction,
+                quantity, prices, feeRate());
     }
 
     /** 现金路径卖出：先 {@code reduceHoldingSell} 成功，再入账。 */
@@ -1572,6 +1669,15 @@ public final class SimulationService {
     private static String format2(double value) {
         if (!Double.isFinite(value)) return "0.00";
         return BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).toPlainString();
+    }
+
+    /** 数量展示：整数不带小数点，小数保留两位（杠杆仓位允许小数数量）。 */
+    private static String formatQty(double value) {
+        if (!Double.isFinite(value)) return "0";
+        if (Math.abs(value - Math.rint(value)) < 1e-9) {
+            return String.valueOf((long) Math.rint(value));
+        }
+        return format2(value);
     }
 
     private void log(Level level, String message) {

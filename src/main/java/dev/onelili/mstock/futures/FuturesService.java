@@ -234,6 +234,73 @@ public class FuturesService {
 
     // ── 查询 ──────────────────────────────────────────────────────────────────
 
+    /**
+     * 按方向平掉某合约上的全部持仓（期货 GUI 的「平多 / 平空」按键）。
+     *
+     * <p>期货持仓以单个 id 为单位平仓，而 GUI 的交易页只认识「合约 + 方向」，
+     * 因此在服务端把该方向上的持仓全部结清，并汇总成一条结果返回。
+     *
+     * @param direction 只平这个方向的持仓；{@code null} 视为非法请求
+     */
+    public CompletableFuture<TradeOutcome> closeByDirection(UUID playerUuid, String symbol,
+                                                            TradeDirection direction) {
+        if (direction == null) {
+            return CompletableFuture.completedFuture(TradeOutcome.fail("trade-invalid-direction"));
+        }
+        String normalized = normalize(symbol);
+        if (normalized == null) {
+            return CompletableFuture.completedFuture(TradeOutcome.fail("trade-invalid-symbol"));
+        }
+        LifecycleTaskManager tasks = plugin.getTaskManager();
+        if (tasks == null) return CompletableFuture.completedFuture(TradeOutcome.fail("db-error"));
+
+        return tasks.supplyAsync(() -> {
+            List<FuturesPosition> all;
+            try {
+                all = repository.findFuturesPositions(playerUuid);
+            } catch (SQLException e) {
+                logger.warning("[MineStock] 读取期货持仓失败: " + e.getMessage());
+                return TradeOutcome.fail("db-error");
+            }
+            List<FuturesPosition> targets = new ArrayList<>();
+            for (FuturesPosition position : all) {
+                if (normalized.equals(position.getSymbol())
+                        && engine.directionOf(position) == direction) {
+                    targets.add(position);
+                }
+            }
+            if (targets.isEmpty()) {
+                return TradeOutcome.fail("futures-no-positions",
+                        "symbol", normalized,
+                        "direction", direction.name());
+            }
+
+            int closed = 0;
+            double totalPnl = 0.0;
+            double totalPayout = 0.0;
+            for (FuturesPosition position : targets) {
+                Double price = fetchPrice(normalized);
+                if (price == null) continue;
+                double pnl = round2(engine.totalPnl(position, price));
+                TradeOutcome outcome = settleClose(position, price, false);
+                if (outcome.success()) {
+                    closed++;
+                    totalPnl += pnl;
+                    totalPayout += engine.closePayout(position, price);
+                }
+            }
+            if (closed == 0) {
+                return TradeOutcome.fail("trade-no-price", "symbol", normalized);
+            }
+            return TradeOutcome.ok("futures-close-all-success",
+                    "symbol", normalized,
+                    "direction", direction.name(),
+                    "count", String.valueOf(closed),
+                    "pnl", (totalPnl >= 0 ? "+" : "") + format2(totalPnl),
+                    "payout", format2(totalPayout));
+        });
+    }
+
     public CompletableFuture<List<FuturesPosition>> positions(UUID playerUuid) {
         LifecycleTaskManager tasks = plugin.getTaskManager();
         if (tasks == null) return CompletableFuture.completedFuture(List.of());

@@ -36,8 +36,10 @@ public class FuturesGui {
     public static final int CONTRACT_SLOTS = 9;
     /** 选中合约的信息放在 13，避免与合约区（0..8）抢槽位。 */
     public static final int SLOT_SELECTED_INFO = 13;
+    public static final int SLOT_CLOSE_LONG = 19;
     public static final int SLOT_OPEN_LONG = 20;
     public static final int SLOT_OPEN_SHORT = 24;
+    public static final int SLOT_CLOSE_SHORT = 25;
     public static final int SLOT_QUANTITY = 22;
     /** 图表放在 31：持仓列表占用 36..44，两者不能重叠。 */
     public static final int SLOT_CHART = 31;
@@ -137,6 +139,16 @@ public class FuturesGui {
                     infoLore));
 
             boolean tradable = active != null;
+            inventory.setItem(SLOT_CLOSE_LONG, GuiItems.button(
+                    tradable ? Material.LIGHT_BLUE_DYE : Material.GRAY_DYE,
+                    Component.text("平多").color(NamedTextColor.AQUA),
+                    List.of(
+                            GuiItems.label(tradable
+                                    ? "平掉 " + active.getSymbol() + " 的全部多头持仓"
+                                    : "请先选择合约"),
+                            GuiItems.label("按合约与方向平仓，不动空单"),
+                            GuiItems.label("权限 minestock.futures.trade"))));
+
             inventory.setItem(SLOT_OPEN_LONG, GuiItems.button(
                     tradable ? Material.LIME_DYE : Material.GRAY_DYE,
                     Component.text("开多").color(NamedTextColor.GREEN),
@@ -157,6 +169,16 @@ public class FuturesGui {
                                     ? "等价于 /mstock futures open "
                                             + active.getSymbol() + " short " + formatQty(quantity)
                                     : "请先选择合约"),
+                            GuiItems.label("权限 minestock.futures.trade"))));
+
+            inventory.setItem(SLOT_CLOSE_SHORT, GuiItems.button(
+                    tradable ? Material.MAGENTA_DYE : Material.GRAY_DYE,
+                    Component.text("平空").color(NamedTextColor.LIGHT_PURPLE),
+                    List.of(
+                            GuiItems.label(tradable
+                                    ? "平掉 " + active.getSymbol() + " 的全部空头持仓"
+                                    : "请先选择合约"),
+                            GuiItems.label("按合约与方向平仓，不动多单"),
                             GuiItems.label("权限 minestock.futures.trade"))));
 
             inventory.setItem(SLOT_QUANTITY, GuiItems.button(Material.PAPER,

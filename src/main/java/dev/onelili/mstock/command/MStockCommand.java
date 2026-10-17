@@ -673,6 +673,8 @@ public class MStockCommand implements CommandExecutor, TabCompleter {
                 openFutures(player, args[2], direction, quantity);
             }
             case "close" -> {
+                // /mstock futures close <id>
+                // /mstock futures close <合约> [long|short]  —— 按合约与方向结清
                 if (args.length < 3) {
                     lang.sendNoPrefix(player, "usage");
                     return;
@@ -681,14 +683,23 @@ public class MStockCommand implements CommandExecutor, TabCompleter {
                     lang.send(player, "no-permission");
                     return;
                 }
-                long id;
+                long id = -1L;
                 try {
                     id = Long.parseLong(args[2]);
-                } catch (NumberFormatException e) {
-                    lang.send(player, "input-invalid");
+                } catch (NumberFormatException ignored) {
+                    // 不是主键，按合约代码处理
+                }
+                if (id >= 0) {
+                    closeFutures(player, id);
                     return;
                 }
-                closeFutures(player, id);
+                TradeDirection closeDirection = args.length >= 4
+                        ? TradeDirection.parse(args[3]) : null;
+                if (closeDirection == null) {
+                    lang.send(player, "trade-invalid-direction");
+                    return;
+                }
+                closeFuturesByDirection(player, args[2], closeDirection);
             }
             case "positions", "list" -> showFuturesPositions(player);
             case "contracts" -> showFuturesContracts(player);
@@ -727,6 +738,23 @@ public class MStockCommand implements CommandExecutor, TabCompleter {
                         player.sendMessage(lang.get(outcome.langKey(), outcome.placeholders()))
                 )).exceptionally(error -> {
             plugin.getLogger().warning("期货平仓失败: " + error.getMessage());
+            runOnPlayer(player, () -> lang.send(player, "api-error"));
+            return null;
+        });
+    }
+
+    /** 按合约 + 方向结清期货持仓；{@code direction} 为 {@code null} 时多空一起平。 */
+    private void closeFuturesByDirection(Player player, String symbol, TradeDirection direction) {
+        FuturesService service = plugin.getFuturesService();
+        if (service == null) {
+            lang.send(player, "vault-not-found");
+            return;
+        }
+        service.closeByDirection(player.getUniqueId(), symbol, direction)
+                .thenAccept(outcome -> runOnPlayer(player, () ->
+                        player.sendMessage(lang.get(outcome.langKey(), outcome.placeholders()))
+                )).exceptionally(error -> {
+            plugin.getLogger().warning("期货按方向平仓失败: " + error.getMessage());
             runOnPlayer(player, () -> lang.send(player, "api-error"));
             return null;
         });
@@ -944,6 +972,8 @@ public class MStockCommand implements CommandExecutor, TabCompleter {
             }
             case "buy" -> simulateBuy(player, args);
             case "sell" -> simulateSell(player, args);
+            case "short" -> simulateShort(player, args);
+            case "cover" -> simulateCover(player, args);
             case "portfolio" -> showSimulationPortfolio(player);
             case "admin" -> handleSimulationAdmin(player, args);
             default -> {
@@ -988,6 +1018,80 @@ public class MStockCommand implements CommandExecutor, TabCompleter {
                         player.sendMessage(lang.get(outcome.langKey(), outcome.placeholders()))))
                 .exceptionally(error -> {
                     plugin.getLogger().warning("模拟盘买入失败: " + error.getMessage());
+                    runOnPlayer(player, () -> lang.send(player, "api-error"));
+                    return null;
+                });
+    }
+
+    private void simulateShort(Player player, String[] args) {
+        SimulationService service = plugin.getSimulationService();
+        if (service == null) {
+            lang.send(player, "simulation-disabled");
+            return;
+        }
+        // 三段式 /mstock simulation short <代码> 走聊天栏补输（与买入同一条通道）。
+        if (args.length == 3) {
+            initShort(player, args[2].toUpperCase());
+            return;
+        }
+        if (args.length != 4 && args.length != 5) {
+            lang.sendNoPrefix(player, "usage");
+            return;
+        }
+        int quantity;
+        int leverage;
+        try {
+            quantity = Integer.parseInt(args[3]);
+            leverage = args.length == 5 ? Integer.parseInt(args[4]) : 1;
+        } catch (NumberFormatException e) {
+            lang.send(player, "input-invalid");
+            return;
+        }
+        service.shortSell(player.getUniqueId(), args[2].toUpperCase(), quantity, leverage)
+                .thenAccept(outcome -> runOnPlayer(player, () ->
+                        player.sendMessage(lang.get(outcome.langKey(), outcome.placeholders()))))
+                .exceptionally(error -> {
+                    plugin.getLogger().warning("模拟盘做空失败: " + error.getMessage());
+                    runOnPlayer(player, () -> lang.send(player, "api-error"));
+                    return null;
+                });
+    }
+
+    private void simulateCover(Player player, String[] args) {
+        SimulationService service = plugin.getSimulationService();
+        if (service == null) {
+            lang.send(player, "simulation-disabled");
+            return;
+        }
+        // 三段式 /mstock simulation cover <代码> = 清空该标的的空头持仓。
+        if (args.length == 3) {
+            String code = args[2].toUpperCase();
+            service.coverAll(player.getUniqueId(), code)
+                    .thenAccept(outcome -> runOnPlayer(player, () ->
+                            player.sendMessage(lang.get(outcome.langKey(), outcome.placeholders()))))
+                    .exceptionally(error -> {
+                        plugin.getLogger().warning("模拟盘平空失败: " + error.getMessage());
+                        runOnPlayer(player, () -> lang.send(player, "api-error"));
+                        return null;
+                    });
+            return;
+        }
+        if (args.length != 4) {
+            lang.sendNoPrefix(player, "usage");
+            return;
+        }
+        int quantity;
+        try {
+            quantity = Integer.parseInt(args[3]);
+        } catch (NumberFormatException e) {
+            lang.send(player, "input-invalid");
+            return;
+        }
+        service.cover(player.getUniqueId(), args[2].toUpperCase(), quantity)
+                .thenAccept(outcome -> runOnPlayer(player, () ->
+                        player.sendMessage(lang.get(outcome.langKey(), outcome.placeholders()))))
+                .exceptionally(error -> {
+                    plugin.getLogger().warning("模拟盘平空失败: " + error.getMessage());
                     runOnPlayer(player, () -> lang.send(player, "api-error"));
                     return null;
                 });
@@ -1425,6 +1529,65 @@ public class MStockCommand implements CommandExecutor, TabCompleter {
                     lang.sendNoPrefix(player, "usage");
                 }
             }
+            case "short" -> {
+                // /mstock short <代码> <数量> [杠杆]，省略数量时走聊天框补输
+                if (args.length == 2) {
+                    initShort(player, args[1].toUpperCase());
+                } else if (args.length == 3 || args.length == 4) {
+                    try {
+                        int amount = Integer.parseInt(args[2]);
+                        int leverage = args.length == 4 ? Integer.parseInt(args[3]) : 0;
+                        executeShort(player, args[1].toUpperCase(), amount, leverage);
+                    } catch (NumberFormatException e) {
+                        lang.send(player, "input-invalid");
+                    }
+                } else {
+                    lang.sendNoPrefix(player, "usage");
+                }
+            }
+            case "cover" -> {
+                // /mstock cover <代码> <数量>，省略数量时走聊天框补输
+                if (args.length == 2) {
+                    initCover(player, args[1].toUpperCase());
+                } else if (args.length == 3) {
+                    try {
+                        executeCover(player, args[1].toUpperCase(), Integer.parseInt(args[2]));
+                    } catch (NumberFormatException e) {
+                        lang.send(player, "input-invalid");
+                    }
+                } else {
+                    lang.sendNoPrefix(player, "usage");
+                }
+            }
+            case "_short_init" -> {
+                if (args.length == 2) {
+                    initShort(player, args[1].toUpperCase());
+                }
+            }
+            case "_cover_init" -> {
+                if (args.length == 2) {
+                    initCover(player, args[1].toUpperCase());
+                }
+            }
+            case "_short_confirm" -> {
+                if (args.length >= 3) {
+                    try {
+                        executeShort(player, args[1].toUpperCase(), Integer.parseInt(args[2]),
+                                args.length == 4 ? Integer.parseInt(args[3]) : 0);
+                    } catch (NumberFormatException e) {
+                        lang.send(player, "input-invalid");
+                    }
+                }
+            }
+            case "_cover_confirm" -> {
+                if (args.length >= 3) {
+                    try {
+                        executeCover(player, args[1].toUpperCase(), Integer.parseInt(args[2]));
+                    } catch (NumberFormatException e) {
+                        lang.send(player, "input-invalid");
+                    }
+                }
+            }
             case "recommended", "rec", "r" -> showRecommendations(player);
             case "portfolio", "p" -> showPortfolio(player);
             case "pg" -> portfolioGUI.open(player);
@@ -1798,6 +1961,66 @@ public class MStockCommand implements CommandExecutor, TabCompleter {
         return sb.toString();
     }
 
+    /**
+     * 做空股票。
+     *
+     * <p>做空没有现金路径：开空必然占用保证金，因此 {@code leverage <= 1} 时按
+     * <b>1 倍全额保证金</b>处理，而不是像买入那样回落到现金持仓。
+     * 杠杆区间由 {@code StockLeverageService} 用股票制度校验，越权值一律拒绝。
+     */
+    public void executeShort(Player player, String code, int amount, int leverage) {
+        if (amount <= 0) {
+            lang.send(player, "input-invalid");
+            return;
+        }
+        var stockService = plugin.getStockLeverageService();
+        if (stockService == null) {
+            lang.send(player, "api-error");
+            return;
+        }
+        int effective = leverage > 0 ? leverage : playerStockLeverage(player);
+        CompletableFuture<TradeOutcome> pending =
+                stockService.sellShort(player.getUniqueId(), code, amount, effective);
+        lang.send(player, "trade-processing", "action", "做空");
+        pending.thenAccept(outcome -> runOnPlayer(player, () ->
+                        player.sendMessage(lang.get(outcome.langKey(), outcome.placeholders()))))
+                .exceptionally(error -> {
+                    plugin.getLogger().warning("做空股票失败: " + error.getMessage());
+                    runOnPlayer(player, () -> lang.send(player, "api-error"));
+                    return null;
+                });
+    }
+
+    /** 回补股票空头：按数量平掉 {@code market=EQUITY} 的空头保证金仓位。 */
+    public void executeCover(Player player, String code, int amount) {
+        if (amount <= 0) {
+            lang.send(player, "input-invalid");
+            return;
+        }
+        var stockService = plugin.getStockLeverageService();
+        if (stockService == null) {
+            lang.send(player, "api-error");
+            return;
+        }
+        stockService.coverLeveraged(player.getUniqueId(), code, amount)
+                .thenCompose(closed -> {
+                    if (closed.closedQuantity() <= 0) {
+                        runOnPlayer(player, () -> lang.send(player, "no-short-holding", "code", code));
+                        return CompletableFuture.completedFuture(null);
+                    }
+                    runOnPlayer(player, () -> lang.sendNoPrefix(player, "cover-success",
+                            "code", code,
+                            "amount", String.valueOf((long) Math.floor(closed.closedQuantity() + 1e-9)),
+                            "payout", format2(closed.payout())));
+                    return CompletableFuture.completedFuture(null);
+                })
+                .exceptionally(error -> {
+                    plugin.getLogger().warning("回补股票空头失败: " + error.getMessage());
+                    runOnPlayer(player, () -> lang.send(player, "api-error"));
+                    return null;
+                });
+    }
+
     private void initBuy(Player player, String code) {
         lang.send(player, "api-fetching", "code", code);
         api.fetch(code).thenAccept(info -> {
@@ -1830,6 +2053,38 @@ public class MStockCommand implements CommandExecutor, TabCompleter {
         });
     }
 
+    private void initShort(Player player, String code) {
+        lang.send(player, "api-fetching", "code", code);
+        api.fetch(code).thenAccept(info -> {
+            double unitPrice = round2(info.getPrice() * config.getPriceRatio());
+            runOnPlayer(player, () -> {
+                session.startSession(player.getUniqueId(), new PendingAction(PendingAction.Type.SHORT, code));
+                lang.send(player, "short-prompt",
+                        "code", code,
+                        "price", format2(unitPrice));
+            });
+        }).exceptionally(ex -> {
+            runOnPlayer(player, () -> lang.send(player, "api-error"));
+            return null;
+        });
+    }
+
+    private void initCover(Player player, String code) {
+        lang.send(player, "api-fetching", "code", code);
+        api.fetch(code).thenAccept(info -> {
+            double unitPrice = round2(info.getPrice() * config.getPriceRatio());
+            runOnPlayer(player, () -> {
+                session.startSession(player.getUniqueId(), new PendingAction(PendingAction.Type.COVER, code));
+                lang.send(player, "cover-prompt",
+                        "code", code,
+                        "price", format2(unitPrice));
+            });
+        }).exceptionally(ex -> {
+            runOnPlayer(player, () -> lang.send(player, "api-error"));
+            return null;
+        });
+    }
+
     /**
      * Called from ChatInputListener after the player types an amount.
      * Must be called on the player's region thread.
@@ -1837,7 +2092,6 @@ public class MStockCommand implements CommandExecutor, TabCompleter {
     public void showTradeConfirm(Player player, PendingAction action) {
         String code = action.getStockCode();
         int amount = action.getAmount();
-        boolean isBuy = action.getType() == PendingAction.Type.BUY;
 
         lang.send(player, "api-fetching", "code", code);
 
@@ -1847,7 +2101,7 @@ public class MStockCommand implements CommandExecutor, TabCompleter {
             double fee       = calcFee(subtotal);
 
             runOnPlayer(player, () -> {
-                if (isBuy) {
+                if (action.isOpeningTrade()) {
                     double total = round2(subtotal + fee);
                     lang.sendNoPrefix(player, "buy-confirm",
                             "unit_price", format2(unitPrice),
@@ -1865,9 +2119,12 @@ public class MStockCommand implements CommandExecutor, TabCompleter {
                             "income",     format2(income));
                 }
 
-                String confirmCmd = isBuy
-                        ? "/mstock _buy_confirm " + code + " " + amount
-                        : "/mstock _sell_confirm " + code + " " + amount;
+                String confirmCmd = switch (action.getType()) {
+                    case SHORT -> "/mstock _short_confirm " + code + " " + amount;
+                    case COVER -> "/mstock _cover_confirm " + code + " " + amount;
+                    case BUY -> "/mstock _buy_confirm " + code + " " + amount;
+                    default -> "/mstock _sell_confirm " + code + " " + amount;
+                };
                 String confirmLine =
                         "<click:run_command:'/mstock _cancel_confirm'>" +
                         "<hover:show_text:'<gray>取消本次交易</gray>'>" +
@@ -2257,7 +2514,7 @@ public class MStockCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command cmd, @NotNull String label, @NotNull String[] args) {
         if (!plugin.isOperational()) return List.of();
         if (args.length == 1) {
-            return List.of("buy", "sell", "portfolio", "pg", "recommended", "reload",
+            return List.of("buy", "sell", "short", "cover", "portfolio", "pg", "recommended", "reload",
                             "leverage", "margin", "forex", "futures", "chart", "menu", "help",
                             "positions", "simulation").stream()
                     .filter(s -> s.startsWith(args[0].toLowerCase()))
@@ -2270,7 +2527,7 @@ public class MStockCommand implements CommandExecutor, TabCompleter {
                 case "futures" -> List.of("open", "close", "positions", "contracts");
                 case "leverage" -> List.of("1", "5", "10", "20", "50", "100", "stock");
                 case "margin" -> List.of("close", "closeall", "topup");
-                case "simulation", "sim" -> List.of("list", "buy", "sell", "portfolio", "admin");
+                case "simulation", "sim" -> List.of("list", "buy", "sell", "short", "cover", "portfolio", "admin");
                 case "help", "?" -> java.util.stream.IntStream.rangeClosed(1, HELP_PAGES)
                         .mapToObj(String::valueOf)
                         .toList();

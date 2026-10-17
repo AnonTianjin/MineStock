@@ -97,6 +97,47 @@ public class ForexService {
                         quantity, quote.getMid(), 0));
     }
 
+    /**
+     * 按方向平仓（交易页的「平多 / 平空」按键）。
+     *
+     * <p>外汇仓位全部是保证金仓位，平仓走 {@link LeverageService#closeQuantity} 的部分平仓路径
+     * （先开先平，按比例释放保证金）。方向必须显式传入：同一品种可以同时持有多单与空单，
+     * 不分方向的平仓会把另一边一起平掉。
+     *
+     * @param direction 只平这个方向的持仓；{@code null} 视为非法请求
+     */
+    public CompletableFuture<TradeOutcome> close(UUID playerUuid, String symbol, double quantity,
+                                                 TradeDirection direction) {
+        if (direction == null) {
+            return CompletableFuture.completedFuture(TradeOutcome.fail("trade-invalid-direction"));
+        }
+        if (!(quantity > 0) || !Double.isFinite(quantity)) {
+            return CompletableFuture.completedFuture(TradeOutcome.fail("trade-invalid-quantity"));
+        }
+        // 与开仓同一道开关：forex.enabled: false 时既不能开也不能平（否则能开不能平会卡死仓位）。
+        dev.onelili.mstock.config.MainConfig mainConfig = plugin.getMainConfig();
+        if (mainConfig != null && !mainConfig.isForexEnabled()) {
+            return CompletableFuture.completedFuture(TradeOutcome.fail("forex-trade-disabled"));
+        }
+        String normalized = normalize(symbol);
+        if (normalized == null) {
+            return CompletableFuture.completedFuture(TradeOutcome.fail("trade-invalid-symbol"));
+        }
+        return quote(normalized).thenCompose(quote ->
+                leverageService.closeQuantity(playerUuid, quote.getMarket(), normalized, direction,
+                                quantity, plugin.priceSource(), 0.0)
+                        .thenApply(closed -> closed == null || closed.closedQuantity() <= 0.0
+                                ? TradeOutcome.fail("forex-no-position",
+                                        "symbol", normalized,
+                                        "direction", direction.name())
+                                : TradeOutcome.ok("forex-close-success",
+                                        "symbol", normalized,
+                                        "direction", direction.name(),
+                                        "quantity", formatQty(closed.closedQuantity()),
+                                        "payout", format2(closed.payout()),
+                                        "fee", format2(closed.fee()))));
+    }
+
     /** 实时报价，价格取 {@code mid}。 */
     public CompletableFuture<ForexQuote> quote(String symbol) {
         String normalized = normalize(symbol);
@@ -204,6 +245,21 @@ public class ForexService {
     /** 该品种所属市场（取 biquote 的 {@code type} / {@code exchange} 元数据）。 */
     public CompletableFuture<MarketType> marketOf(String symbol) {
         return quote(symbol).thenApply(ForexQuote::getMarket);
+    }
+
+    private static String format2(double value) {
+        if (!Double.isFinite(value)) return "0.00";
+        return java.math.BigDecimal.valueOf(value)
+                .setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
+    }
+
+    /** 数量展示：整数不带小数点，小数保留两位（外汇数量允许小数）。 */
+    private static String formatQty(double value) {
+        if (!Double.isFinite(value)) return "0";
+        if (Math.abs(value - Math.rint(value)) < 1e-9) {
+            return String.valueOf((long) Math.rint(value));
+        }
+        return format2(value);
     }
 
     static String normalize(String symbol) {

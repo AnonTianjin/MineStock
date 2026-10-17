@@ -115,6 +115,8 @@ class HelpPagingTest {
             // 基础组（第一页）
             {"positions", "基础"},
             {"pg", "基础"},
+            {"mstock short", "基础"},
+            {"mstock cover", "基础"},
             // 杠杆组
             {"leverage stock", "杠杆"},
             {"margin close", "保证金"},
@@ -132,6 +134,8 @@ class HelpPagingTest {
             // 模拟盘组
             {"simulation list", "模拟盘"},
             {"simulation admin", "模拟盘"},
+            {"simulation short", "模拟盘"},
+            {"simulation cover", "模拟盘"},
     };
 
     @Test
@@ -155,6 +159,30 @@ class HelpPagingTest {
             assertTrue(paged.toString().toLowerCase(Locale.ROOT).contains(hint[0].toLowerCase(Locale.ROOT)),
                     "帮助分页正文缺少 " + hint[1] + " 指令关键词: " + hint[0]);
         }
+    }
+
+    /**
+     * {@code usage} 是"参数非法"时的短提示，十几处调用点共用，所以它比 help 分页更像是
+     * 玩家第一眼看到的东西。做空 / 回补是新的两条主线操作，必须在这里也出现，
+     * 否则输错参数时给出的提示里永远看不到它们。
+     */
+    @Test
+    void usageBlockMentionsShortAndCover() throws Exception {
+        String yaml = Files.readString(LANG, java.nio.charset.StandardCharsets.UTF_8);
+        StringBuilder usage = new StringBuilder();
+        boolean inUsage = false;
+        for (String line : yaml.split("\n", -1)) {
+            if (line.startsWith("usage:")) {
+                inUsage = true;
+            } else if (inUsage && !line.isBlank() && !line.startsWith(" ")
+                    && !line.startsWith("#")) {
+                inUsage = false;
+            }
+            if (inUsage) usage.append(line).append('\n');
+        }
+        String body = usage.toString().toLowerCase(Locale.ROOT);
+        assertTrue(body.contains("/mstock short"), "usage 短提示缺少 /mstock short");
+        assertTrue(body.contains("/mstock cover"), "usage 短提示缺少 /mstock cover");
     }
 
     @Test

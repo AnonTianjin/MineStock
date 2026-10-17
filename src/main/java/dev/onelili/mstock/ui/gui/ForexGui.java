@@ -57,9 +57,11 @@ public class ForexGui {
     public static final int SLOT_NEXT_PAGE = 53;
 
     // ── 交易页槽位 ────────────────────────────────────────────────────────────
+    public static final int SLOT_CLOSE_LONG = 19;
     public static final int SLOT_BUY = 20;
-    public static final int SLOT_SELL = 24;
     public static final int SLOT_QUANTITY = 22;
+    public static final int SLOT_SELL = 24;
+    public static final int SLOT_CLOSE_SHORT = 25;
     public static final int SLOT_CHART = 40;
     public static final int SLOT_BACK_TO_MARKET = 45;
 
@@ -419,8 +421,16 @@ public class ForexGui {
                         GuiItems.line("数量", formatQty(quantity), NamedTextColor.WHITE),
                         GuiItems.label("价格取 biquote mid"))));
 
+        inventory.setItem(SLOT_CLOSE_LONG, GuiItems.button(Material.LIGHT_BLUE_DYE,
+                Component.text("平多").color(NamedTextColor.AQUA),
+                List.of(
+                        GuiItems.line("数量", formatQty(quantity), NamedTextColor.WHITE),
+                        GuiItems.label("按数量平掉多头持仓（先开先平）"),
+                        GuiItems.label("不改多空方向，只减仓"),
+                        GuiItems.label("权限 minestock.forex.trade"))));
+
         inventory.setItem(SLOT_BUY, GuiItems.button(Material.LIME_DYE,
-                Component.text("买入（开多）").color(NamedTextColor.GREEN),
+                Component.text("做多（买入）").color(NamedTextColor.GREEN),
                 List.of(
                         GuiItems.line("数量", formatQty(quantity), NamedTextColor.WHITE),
                         GuiItems.label("等价于 /mstock forex buy " + symbol + " "
@@ -428,11 +438,19 @@ public class ForexGui {
                         GuiItems.label("权限 minestock.forex.trade"))));
 
         inventory.setItem(SLOT_SELL, GuiItems.button(Material.RED_DYE,
-                Component.text("卖出（开空）").color(NamedTextColor.RED),
+                Component.text("做空（卖出）").color(NamedTextColor.RED),
                 List.of(
                         GuiItems.line("数量", formatQty(quantity), NamedTextColor.WHITE),
                         GuiItems.label("等价于 /mstock forex sell " + symbol + " "
                                 + formatQty(quantity)),
+                        GuiItems.label("权限 minestock.forex.trade"))));
+
+        inventory.setItem(SLOT_CLOSE_SHORT, GuiItems.button(Material.MAGENTA_DYE,
+                Component.text("平空").color(NamedTextColor.LIGHT_PURPLE),
+                List.of(
+                        GuiItems.line("数量", formatQty(quantity), NamedTextColor.WHITE),
+                        GuiItems.label("按数量回补空头持仓（先开先平）"),
+                        GuiItems.label("只平空单，不动多单"),
                         GuiItems.label("权限 minestock.forex.trade"))));
 
         inventory.setItem(SLOT_QUANTITY, GuiItems.button(Material.PAPER,

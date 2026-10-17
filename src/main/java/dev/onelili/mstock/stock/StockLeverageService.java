@@ -45,15 +45,46 @@ public class StockLeverageService {
      *
      * <p>价格取股票行情现价（含 {@code price-ratio}），手续费按名义价值收取。
      *
+     * @param leverage 指定杠杆；{@code 0} 表示使用玩家当前的股票杠杆设置
+     */
+    public CompletableFuture<TradeOutcome> buy(java.util.UUID playerUuid, String code,
+                                               double quantity, int leverage) {
+        return open(playerUuid, code, quantity, leverage, TradeDirection.LONG);
+    }
+
+    /**
+     * 做空股票（开空）。
+     *
+     * <p>与买入共用同一个保证金引擎，唯一的差别是方向为 {@link TradeDirection#SHORT}：
+     * 盈亏随价格下跌为正，保证金与强平价由同一套公式按方向翻转。
+     *
+     * <p><b>空头没有现金路径</b>：多头 1 倍杠杆等于全额现金买入，因此由现金持仓（{@code holdings}）
+     * 承接；做空必须借券卖出，1 倍杠杆即 100% 保证金，仍然是一条保证金仓位。
+     * 这也是为什么这里不放行 {@code stock-leverage-cash-path}。
+     *
+     * @param leverage 指定杠杆；{@code 0} 表示使用玩家当前的股票杠杆设置
+     */
+    public CompletableFuture<TradeOutcome> sellShort(java.util.UUID playerUuid, String code,
+                                                     double quantity, int leverage) {
+        return open(playerUuid, code, quantity, leverage, TradeDirection.SHORT);
+    }
+
+    /**
+     * 按方向开仓。
+     *
      * <p><b>杠杆校验是本方法的职责</b>：股票杠杆上限与外汇不同（默认 10 vs 100），
      * 且可被 {@code leverage.stock.enabled} 整体关闭。若把校验留给调用方，
      * 一旦有人直接传 {@code leverage} 就会绕过股票上限 —— 因此这里用
      * {@link LeverageConfig#accepts} 以股票制度为准做唯一裁决。
      *
-     * @param leverage 指定杠杆；{@code 0} 表示使用玩家当前的股票杠杆设置
+     * @param direction 开仓方向；{@code null} 视为非法请求
      */
-    public CompletableFuture<TradeOutcome> buy(java.util.UUID playerUuid, String code,
-                                               double quantity, int leverage) {
+    public CompletableFuture<TradeOutcome> open(java.util.UUID playerUuid, String code,
+                                                double quantity, int leverage,
+                                                TradeDirection direction) {
+        if (direction == null) {
+            return CompletableFuture.completedFuture(TradeOutcome.fail("trade-invalid-direction"));
+        }
         if (!(quantity > 0) || !Double.isFinite(quantity)) {
             return CompletableFuture.completedFuture(TradeOutcome.fail("trade-invalid-quantity"));
         }
@@ -73,6 +104,13 @@ public class StockLeverageService {
         if (leverageConfig == null) {
             return CompletableFuture.completedFuture(TradeOutcome.fail("db-error"));
         }
+        boolean shortSide = direction == TradeDirection.SHORT;
+        // 做空必然是杠杆业务（借券卖出）。股票杠杆被整体关闭时，
+        // `accepts(STOCK, 1)` 仍然放行 1 倍（多头的现金路径需要它），
+        // 因此空头必须在这里单独拒一次，否则关掉杠杆也能开空。
+        if (shortSide && !leverageConfig.isStockLeverageEnabled()) {
+            return CompletableFuture.completedFuture(TradeOutcome.fail("leverage-stock-disabled"));
+        }
         int requested = leverage > 0 ? leverage : stockLeverage(playerUuid);
         if (!leverageConfig.accepts(LeverageConfig.Policy.STOCK, requested)) {
             // 关闭时只允许 1x，其余一律按"现金路径"处理由调用方决定，这里直接拒绝非现金请求。
@@ -80,8 +118,8 @@ public class StockLeverageService {
                     "leverage-stock-out-of-range",
                     "max", String.valueOf(leverageConfig.getStockMaxLeverage())));
         }
-        if (requested <= 1) {
-            // 1x 表示不借钱，必须走现金持仓路径，不该产生保证金仓位。
+        if (!shortSide && requested <= 1) {
+            // 多头 1x 表示不借钱，必须走现金持仓路径，不该产生保证金仓位。
             return CompletableFuture.completedFuture(
                     TradeOutcome.fail("stock-leverage-cash-path"));
         }
@@ -97,7 +135,7 @@ public class StockLeverageService {
                         playerUuid,
                         MarketType.EQUITY,
                         normalized,
-                        TradeDirection.LONG,
+                        direction,
                         quantity,
                         info.getPrice() * priceRatio(),
                         requested,
@@ -106,12 +144,28 @@ public class StockLeverageService {
     }
 
     /**
-     * 卖出股票时先平杠杆仓位（先开先平，支持部分平仓）。
+     * 卖出股票时先平杠杆<b>多头</b>仓位（先开先平，支持部分平仓）。
      *
      * @return 实际平掉的数量与到账金额；无杠杆仓位时数量为 0
      */
     public CompletableFuture<LeverageService.PartialClose> closeLeveraged(
             java.util.UUID playerUuid, String code, double quantity) {
+        return closeDirection(playerUuid, code, quantity, TradeDirection.LONG);
+    }
+
+    /**
+     * 回补杠杆<b>空头</b>仓位（先开先平，支持部分平仓）。
+     *
+     * <p>平仓带方向是必须的：同一只股票可以同时有多单与空单，
+     * 只按品种平会把两个方向一起平掉。
+     */
+    public CompletableFuture<LeverageService.PartialClose> coverLeveraged(
+            java.util.UUID playerUuid, String code, double quantity) {
+        return closeDirection(playerUuid, code, quantity, TradeDirection.SHORT);
+    }
+
+    private CompletableFuture<LeverageService.PartialClose> closeDirection(
+            java.util.UUID playerUuid, String code, double quantity, TradeDirection direction) {
         if (!(quantity > 0) || !Double.isFinite(quantity)) {
             return CompletableFuture.completedFuture(
                     new LeverageService.PartialClose(0, 0, 0, java.util.List.of()));
@@ -122,7 +176,7 @@ public class StockLeverageService {
                     new LeverageService.PartialClose(0, 0, 0, java.util.List.of()));
         }
         return leverageService.closeQuantity(
-                playerUuid, MarketType.EQUITY, normalized, quantity,
+                playerUuid, MarketType.EQUITY, normalized, direction, quantity,
                 plugin.priceSource(), feeRate());
     }
 

@@ -421,6 +421,14 @@ public class TradingGuiListener implements Listener {
         }
         if (slot == ForexGui.SLOT_SELL) {
             tradeForex(player, holder, TradeDirection.SHORT);
+            return;
+        }
+        if (slot == ForexGui.SLOT_CLOSE_LONG) {
+            closeForex(player, holder, TradeDirection.LONG);
+            return;
+        }
+        if (slot == ForexGui.SLOT_CLOSE_SHORT) {
+            closeForex(player, holder, TradeDirection.SHORT);
         }
     }
 
@@ -438,6 +446,24 @@ public class TradingGuiListener implements Listener {
                 ? service.buy(player.getUniqueId(), symbol, quantity)
                 : service.sell(player.getUniqueId(), symbol, quantity);
         sendOutcome(player, pending);
+    }
+
+    /** 平多 / 平空：按方向平掉该品种的保证金仓位（数量取当前交易页的数量）。 */
+    private void closeForex(Player player, GuiHolder holder, TradeDirection direction) {
+        if (!player.hasPermission("minestock.forex.trade")) {
+            player.sendMessage(plugin.getLang().get("no-permission"));
+            return;
+        }
+        var service = plugin.getForexService();
+        if (service == null) return;
+        double quantity = holder.getQuantity() > 0 ? holder.getQuantity() : 1.0;
+        String symbol = holder.getSymbol();
+        if (symbol == null || symbol.isBlank()) return;
+        sendOutcome(player, service.close(player.getUniqueId(), symbol, quantity, direction),
+                () -> {
+                    new ForexGui(plugin).renderTrade(player, holder);
+                    new ForexGui(plugin).refreshQuote(player, holder);
+                });
     }
 
     // ── 期货 ──────────────────────────────────────────────────────────────────
@@ -486,6 +512,14 @@ public class TradingGuiListener implements Listener {
             openFutures(player, holder, TradeDirection.SHORT);
             return;
         }
+        if (slot == FuturesGui.SLOT_CLOSE_LONG) {
+            closeFuturesByDirection(player, holder, TradeDirection.LONG);
+            return;
+        }
+        if (slot == FuturesGui.SLOT_CLOSE_SHORT) {
+            closeFuturesByDirection(player, holder, TradeDirection.SHORT);
+            return;
+        }
         if (slot >= FuturesGui.POSITION_START
                 && slot < FuturesGui.POSITION_START + FuturesGui.POSITION_SLOTS) {
             closeFutures(player, holder, slot);
@@ -506,6 +540,23 @@ public class TradingGuiListener implements Listener {
         }
         double quantity = holder.getQuantity() > 0 ? holder.getQuantity() : 1.0;
         sendOutcome(player, service.open(player.getUniqueId(), symbol, direction, quantity),
+                () -> new FuturesGui(plugin).reload(player, holder));
+    }
+
+    /** 平多 / 平空：按合约 + 方向结清该方向上的全部期货持仓。 */
+    private void closeFuturesByDirection(Player player, GuiHolder holder, TradeDirection direction) {
+        if (!player.hasPermission("minestock.futures.trade")) {
+            player.sendMessage(plugin.getLang().get("no-permission"));
+            return;
+        }
+        var service = plugin.getFuturesService();
+        if (service == null) return;
+        String symbol = holder.getSymbol();
+        if (symbol == null || symbol.isBlank()) {
+            player.sendMessage(plugin.getLang().get("futures-no-contract-selected"));
+            return;
+        }
+        sendOutcome(player, service.closeByDirection(player.getUniqueId(), symbol, direction),
                 () -> new FuturesGui(plugin).reload(player, holder));
     }
 
@@ -622,6 +673,14 @@ public class TradingGuiListener implements Listener {
         }
         if (slot == SimulationGui.SLOT_SELL) {
             tradeSimulation(player, holder, false);
+            return;
+        }
+        if (slot == SimulationGui.SLOT_SHORT) {
+            tradeSimulationShort(player, holder);
+            return;
+        }
+        if (slot == SimulationGui.SLOT_COVER) {
+            coverSimulation(player, holder);
         }
     }
 
@@ -639,6 +698,26 @@ public class TradingGuiListener implements Listener {
         } else {
             sendOutcome(player, pending);
         }
+    }
+
+    /** 交易页做空：数量与买入完全共用 {@code GuiHolder#getQuantity}。 */
+    private void tradeSimulationShort(Player player, GuiHolder holder) {
+        SimulationService service = plugin.getSimulationService();
+        String code = holder.getSymbol();
+        if (service == null || code == null) return;
+        int amount = (int) Math.max(1.0, Math.floor(holder.getQuantity()));
+        sendOutcome(player, service.shortSell(player.getUniqueId(), code, amount, 1),
+                () -> new SimulationGui(plugin).renderTrade(player, holder));
+    }
+
+    /** 交易页平空：按数量回补空头。 */
+    private void coverSimulation(Player player, GuiHolder holder) {
+        SimulationService service = plugin.getSimulationService();
+        String code = holder.getSymbol();
+        if (service == null || code == null) return;
+        int amount = (int) Math.max(1.0, Math.floor(holder.getQuantity()));
+        sendOutcome(player, service.cover(player.getUniqueId(), code, amount),
+                () -> new SimulationGui(plugin).renderTrade(player, holder));
     }
 
     // ── 模拟盘：管理控制台 ────────────────────────────────────────────────────

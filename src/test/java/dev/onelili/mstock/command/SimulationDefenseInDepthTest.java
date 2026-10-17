@@ -64,11 +64,11 @@ class SimulationDefenseInDepthTest {
     }
 
     /**
-     * 纵深防御 2：{@code StockLeverageService.buy} 必须在做任何事之前拒绝模拟代码。
+     * 纵深防御 2：{@code StockLeverageService.open} 必须在做任何事之前拒绝模拟代码。
      *
-     * <p>这条不变量比指令层的两条守卫更靠内：{@code StockLeverageService.buy} 是
-     * "股票加杠杆买入"的<b>唯一</b>实现，任何新调用方（未来的新指令、GUI 按钮、
-     * 第三方经 {@code MineStockAPI} 的间接路径）都会经过它。它一旦失效，
+     * <p>{@code open(...)} 是"股票加杠杆开仓"的<b>唯一</b>实现（{@code buy} 与
+     * {@code sellShort} 都只是带上方向后委托给它），任何新调用方（未来的新指令、
+     * GUI 按钮、第三方经 {@code MineStockAPI} 的间接路径）都会经过它。它一旦失效，
      * 模拟代码就会带着 {@code MarketType.EQUITY} 落进真实 {@code margin_positions}。
      *
      * <p>断言的不只是"存在",还有<b>顺序</b>：{@code isSimulationCode} 判定必须排在
@@ -77,13 +77,13 @@ class SimulationDefenseInDepthTest {
     @Test
     void stockLeverageServiceRejectsSimulationCodesBeforeOpening() throws IOException {
         String body = JavaSource.methodBody(JavaSource.read(STOCK_LEVERAGE_SERVICE),
-                "public CompletableFuture<TradeOutcome> buy(java.util.UUID playerUuid, String code,");
+                "public CompletableFuture<TradeOutcome> open(java.util.UUID playerUuid, String code,");
 
-        assertNotNull(body, "没能定位 StockLeverageService.buy 的方法体");
+        assertNotNull(body, "没能定位 StockLeverageService.open 的方法体");
         assertTrue(body.contains("getSimulationService"),
-                "StockLeverageService.buy 必须经 plugin.getSimulationService() 取模拟盘服务");
+                "StockLeverageService.open 必须经 plugin.getSimulationService() 取模拟盘服务");
         assertTrue(body.contains("isSimulationCode"),
-                "StockLeverageService.buy 必须检查代码归属，否则 SIM001 会以 market=EQUITY"
+                "StockLeverageService.open 必须检查代码归属，否则 SIM001 会以 market=EQUITY"
                         + " 落成真实保证金仓位");
         assertTrue(body.contains("trade-invalid-symbol"),
                 "拒绝模拟代码时必须返回 trade-invalid-symbol，否则调用方无从得知拒绝原因");

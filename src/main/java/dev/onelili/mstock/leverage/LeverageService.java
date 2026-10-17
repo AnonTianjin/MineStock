@@ -520,6 +520,21 @@ public class LeverageService {
     public CompletableFuture<PartialClose> closeQuantity(UUID playerUuid, MarketType market,
                                                          String symbol, double quantity,
                                                          SymbolPriceSource prices, double feeRate) {
+        return closeQuantity(playerUuid, market, symbol, null, quantity, prices, feeRate);
+    }
+
+    /**
+     * 按数量平掉指定<b>方向</b>的杠杆持仓（先开先平），支持部分平仓。
+     *
+     * <p>做空上线后同一品种可以同时有多单与空单，只按品种平仓会把两个方向一起平掉，
+     * 因此平仓必须显式带方向。6 参重载保持「不分方向」的旧语义。
+     *
+     * @param direction 目标方向；{@code null} 表示不分方向
+     */
+    public CompletableFuture<PartialClose> closeQuantity(UUID playerUuid, MarketType market,
+                                                         String symbol, TradeDirection direction,
+                                                         double quantity,
+                                                         SymbolPriceSource prices, double feeRate) {
         LifecycleTaskManager tasks = plugin.getTaskManager();
         if (tasks == null) {
             return CompletableFuture.completedFuture(new PartialClose(0, 0, 0, List.of()));
@@ -544,7 +559,7 @@ public class LeverageService {
 
             List<MarginPosition> positions;
             try {
-                positions = repository.findMarginPositionsBySymbol(playerUuid, market, symbol);
+                positions = repository.findMarginPositionsBySymbol(playerUuid, market, symbol, direction);
             } catch (SQLException e) {
                 logger.warning("[MineStock] 读取杠杆持仓失败 " + symbol + ": " + e.getMessage());
                 return new PartialClose(0, 0, 0, List.of());
@@ -605,6 +620,22 @@ public class LeverageService {
             return new PartialClose(round2(quantity - remaining), round2(payout),
                     round2(fee), List.copyOf(closedIds));
         });
+    }
+
+    /** 该玩家在某市场 / 品种 / 方向上的持仓数量合计（同步读库，供界面与「全部平仓」使用）。 */
+    public double quantityOf(UUID playerUuid, MarketType market, String symbol,
+                             TradeDirection direction) {
+        try {
+            double total = 0.0;
+            for (MarginPosition position : repository.findMarginPositionsBySymbol(
+                    playerUuid, market, symbol, direction)) {
+                total += position.getQuantity();
+            }
+            return total;
+        } catch (SQLException e) {
+            logger.warning("[MineStock] 读取持仓数量失败 " + symbol + ": " + e.getMessage());
+            return 0.0;
+        }
     }
 
     // ── 内部结算 ──────────────────────────────────────────────────────────────

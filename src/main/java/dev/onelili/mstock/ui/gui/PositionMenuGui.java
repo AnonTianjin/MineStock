@@ -250,8 +250,12 @@ public class PositionMenuGui {
                         ? buildSimulationItem(loaded.simulation(), code)
                         : buildStockItem(loaded.holding(), loaded.price(), code));
 
+        boolean shortSide = margin && loaded.position() != null
+                && loaded.position().getDirection() == dev.onelili.mstock.model.TradeDirection.SHORT;
+
         String sellHint = margin
-                ? "按最新价格结算并平掉这笔保证金仓位"
+                ? (shortSide ? "按最新价格结算并平掉这笔空头保证金仓位"
+                        : "按最新价格结算并平掉这笔多头保证金仓位")
                 : simulation
                         ? "卖出这只模拟股票的部分或全部持仓"
                         : "卖出这只股票的部分或全部持仓";
@@ -262,7 +266,8 @@ public class PositionMenuGui {
                         : "/mstock sell " + code;
 
         inventory.setItem(SLOT_SELL, GuiItems.button(Material.GOLD_INGOT,
-                Component.text(margin ? "平仓" : "卖出").color(NamedTextColor.YELLOW),
+                Component.text(margin ? (shortSide ? "平空" : "平多") : "卖出")
+                        .color(NamedTextColor.YELLOW),
                 List.of(
                         GuiItems.label(sellHint),
                         GuiItems.label(margin

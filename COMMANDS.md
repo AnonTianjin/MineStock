@@ -28,6 +28,8 @@
 | `/mstock <代码>` | 查询股票实时行情 | minestock.use |
 | `/mstock buy <代码> [数量] [杠杆]` | 买入股票（省略数量则在聊天栏补输） | minestock.use |
 | `/mstock sell <代码> [数量]` | 卖出股票（省略数量则在聊天栏补输） | minestock.use |
+| `/mstock short <代码> [数量] [杠杆]` | 做空股票（保证金，1x 即全额保证金） | minestock.use |
+| `/mstock cover <代码> [数量]` | 回补股票空头（省略数量 = 清空该标的空头） | minestock.use |
 | `/mstock portfolio` | 我的持仓（聊天框，`p`） | minestock.use |
 | `/mstock positions` | 持仓总览 GUI（`pos`，含真实股票 / 模拟盘 / 保证金 / 期货，可翻页） | minestock.use |
 | `/mstock pg` | 持仓分页（聊天框明细） | minestock.use |
@@ -54,6 +56,8 @@
 | `/mstock <代码>` | 查询单只股票实时行情，如 `/mstock AAPL`、`/mstock 600519` |
 | `/mstock buy <代码> [数量] [杠杆]` | 买入股票；第 4 参 > 1 时走杠杆保证金通道，如 `/mstock buy AAPL 10 5`。省略数量则进入聊天栏补输（GUI 走这条两段式路径） |
 | `/mstock sell <代码> [数量]` | 卖出股票。省略数量则进入聊天栏补输 |
+| `/mstock short <代码> [数量] [杠杆]` | 做空股票，如 `/mstock short AAPL 10 5`。空头仓位以 `margin_positions` 的 `direction=SHORT` 落库，走与杠杆多头完全相同的保证金 / 强平规则。**杠杆允许写 1**（全额保证金），不会像 `/mstock buy` 那样回落到现金通道 —— 现金持仓没有借券模型，做空必须走保证金。`leverage.stock.enabled: false` 时整体拒绝（`leverage-stock-disabled`） |
+| `/mstock cover <代码> [数量]` | 回补空头（平空）。省略数量则进入聊天栏补输，**只平该标的的空头，绝不碰多头** |
 | `/mstock portfolio` | 聊天框展示现金持仓与盈亏。别名：`p` |
 | `/mstock positions` | 打开持仓总览 GUI（真实股票 / 股票杠杆 / **模拟盘** / 保证金 / 期货，条目超出容量时用 ◀ ▶ 翻页）。**左键**持仓 = 弹出操作菜单（卖出或平仓 / 查看K线 / 详情），**右键** = 直接看详情。别名：`pos` |
 | `/mstock pg` | 聊天框分页持仓明细 |
@@ -87,6 +91,10 @@
 | `/mstock forex sell <品种> <数量>` | 卖出（开空） |
 | `/mstock forex chart <品种> [周期] [根数]` | 外汇走势图 |
 
+> 外汇仓位一律落 `margin_positions`，平仓统一走 `/mstock margin close <仓位ID>`，
+> 或在**外汇交易页**点「平多（卖出多头）」/「平空（回补空头）」—— 两个按钮按当前
+> 「数量」格执行，只平该品种该方向的仓位，多空互不影响。
+
 ## 4. 期货
 
 | 指令 | 说明 |
@@ -94,6 +102,7 @@
 | `/mstock futures` | 打开期货 GUI：上排选合约，中部开仓，下排持仓 |
 | `/mstock futures open <品种> <long\|short> [数量]` | 开仓，如 `/mstock futures open BTC long 2`；省略数量按 1 手 |
 | `/mstock futures close <仓位ID>` | 平掉指定期货仓位 |
+| `/mstock futures close <品种> <long\|short>` | 按合约与方向结清，如 `/mstock futures close BTC short`。期货**没有部分平仓**，因此这条会平掉该合约该方向的**全部**持仓，数量格不参与 |
 | `/mstock futures positions` | 聊天框期货持仓。别名：`list` |
 | `/mstock futures contracts` | 聊天框合约列表（到期日 / 乘数 / 保证金率） |
 | `/mstock futures menu` | 重新打开期货 GUI |
@@ -125,7 +134,9 @@
 | `/mstock simulation list [页码]` | 打开指定页的行情列表 GUI |
 | `/mstock simulation <代码>` | 查询模拟标的详情（复用真实盘渲染） |
 | `/mstock simulation buy <代码> [数量] [杠杆]` | 模拟买入；杠杆大于 1 时走保证金通道。**省略数量则进入聊天栏补输** |
-| `/mstock simulation sell <代码> [数量]` | 模拟卖出。**省略数量 = 清空该标的现金持仓**（持仓操作菜单的「卖出」按钮走这条） |
+| `/mstock simulation sell <代码> [数量]` | 模拟卖出（平多）。**省略数量 = 清空该标的现金多头持仓**（持仓操作菜单的「卖出 / 平多」按钮走这条） |
+| `/mstock simulation short <代码> [数量] [杠杆]` | 模拟做空。空头落 `market=SIMULATION` 的 `margin_positions`，`direction=SHORT`；杠杆允许写 1（全额保证金）。省略数量则进入聊天栏补输 |
+| `/mstock simulation cover <代码> [数量]` | 模拟平空。省略数量 = 清空该标的空头持仓；没有空头时报 `simulation-no-short`，不会误动现金多头 |
 | `/mstock simulation portfolio` | 模拟盘现金持仓（与真实盘持仓分开展示） |
 | `/mstock simulation admin` | 无动作参数 = 打开管理 GUI（需 `minestock.simulation.admin`） |
 

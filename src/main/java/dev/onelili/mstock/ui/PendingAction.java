@@ -2,10 +2,10 @@ package dev.onelili.mstock.ui;
 
 public class PendingAction {
     /**
-     * BUY/SELL 为原股票交易流程；FOREX_* 与 FUTURES_* 由 GUI 的数量输入复用同一通道；
+     * BUY/SELL/SHORT/COVER 为股票交易流程；FOREX_* 与 FUTURES_* 由 GUI 的数量输入复用同一通道；
      * SYMBOL_SEARCH 为文本输入（品种模糊搜索关键词）。
      */
-    public enum Type { BUY, SELL, FOREX_BUY, FOREX_SELL, FUTURES_OPEN, SYMBOL_SEARCH }
+    public enum Type { BUY, SELL, SHORT, COVER, FOREX_BUY, FOREX_SELL, FUTURES_OPEN, SYMBOL_SEARCH }
 
     private final Type type;
     private final String stockCode;
@@ -35,8 +35,14 @@ public class PendingAction {
     public String getTextInput() { return textInput; }
     public void setTextInput(String textInput) { this.textInput = textInput == null ? "" : textInput; }
 
-    /** 是否是股票买卖流程（需要走确认页）。 */
-    public boolean isStockTrade() { return type == Type.BUY || type == Type.SELL; }
+    /** 是否是股票交易流程（需要走确认页）。 */
+    public boolean isStockTrade() {
+        return type == Type.BUY || type == Type.SELL
+                || type == Type.SHORT || type == Type.COVER;
+    }
+
+    /** 是否会把持仓数量加上去（买入 / 做空都开新仓，确认页按"付出"计算）。 */
+    public boolean isOpeningTrade() { return type == Type.BUY || type == Type.SHORT; }
 
     /** 是否是纯文本输入（品种搜索）。 */
     public boolean isTextInput() { return type == Type.SYMBOL_SEARCH; }

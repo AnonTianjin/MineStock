@@ -50,7 +50,8 @@ class LeverageServiceWiringTest {
             "public CompletableFuture<TradeOutcome> close(UUID playerUuid, long positionId, "
                     + "double currentPrice, SymbolPriceSource prices)";
     private static final String CLOSE_QUANTITY_SIGNATURE =
-            "public CompletableFuture<PartialClose> closeQuantity(UUID playerUuid, MarketType market,";
+            "public CompletableFuture<PartialClose> closeQuantity(UUID playerUuid, MarketType market,"
+                    + " String symbol, TradeDirection direction,";
     private static final String CLOSE_ALL_SIGNATURE =
             "public CompletableFuture<TradeOutcome> closeAll(UUID playerUuid, SymbolPriceSource prices)";
 

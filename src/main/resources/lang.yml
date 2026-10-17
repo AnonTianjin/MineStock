@@ -26,6 +26,8 @@ portfolio-item-down: "  <click:run_command:'/mstock {code}'><hover:show_text:'<g
 
 buy-prompt: "买入 <aqua>{code}</aqua>  <dark_gray>当前价格</dark_gray> <white>{price}</white> <dark_gray>金币/股</dark_gray>  请输入股数 <dark_gray>（输入 cancel 退出）</dark_gray>："
 sell-prompt: "卖出 <aqua>{code}</aqua>  <dark_gray>当前价格</dark_gray> <white>{price}</white> <dark_gray>金币/股</dark_gray>  请输入股数 <dark_gray>（输入 cancel 退出）</dark_gray>："
+short-prompt: "做空 <aqua>{code}</aqua>  <dark_gray>当前价格</dark_gray> <white>{price}</white> <dark_gray>金币/股</dark_gray>  请输入做空股数 <dark_gray>（输入 cancel 退出）</dark_gray>："
+cover-prompt: "回补 <aqua>{code}</aqua>  <dark_gray>当前价格</dark_gray> <white>{price}</white> <dark_gray>金币/股</dark_gray>  请输入回补股数 <dark_gray>（输入 cancel 退出）</dark_gray>："
 input-cancelled: "<gray>  已取消。</gray>"
 input-invalid: "<red>✗ 请输入正整数。</red>"
 
@@ -36,6 +38,8 @@ sell-success: "<green>✔ 卖出成功</green>"
 not-enough-money: "<red>✗ 余额不足</red>  需要 <white>{need}</white> 金币，当前余额 <white>{balance}</white> 金币"
 not-enough-holding: "<red>✗ 持仓不足</red>  持有 <white>{hold}</white> 股，无法卖出 <white>{amount}</white> 股"
 no-holding: "<red>✗ 你没有持仓 <aqua>{code}</aqua></red>"
+no-short-holding: "<red>✗ 你没有 <aqua>{code}</aqua> 的空头持仓</red>"
+cover-success: "<green>✔ 回补成功</green>  <aqua>{code}</aqua>  <white>{amount}</white> 股  <dark_gray>到账</dark_gray> <white>{payout}</white>"
 unsupported-code: "<red>✗ 不支持的股票代码 <aqua>{code}</aqua>，A 股请输入 6 位数字，美股请输入英文代码。</red>"
 
 api-cooldown: "<gray>  请等待 <white>{seconds}</white> 后再操作。</gray>"
@@ -111,6 +115,8 @@ futures-contract-item: "  <aqua>{symbol}</aqua>  <dark_gray>到期</dark_gray> <
 futures-contract-not-found: "<red>✗ 未知期货合约 <aqua>{symbol}</aqua>。</red>"
 futures-contract-expired: "<red>✗ 合约 <aqua>{symbol}</aqua> 已到期。</red>"
 futures-no-contract-selected: "<red>✗ 请先选择一个合约。</red>"
+futures-no-positions: "<red>✗ 没有符合条件的期货持仓</red> <dark_gray>（{symbol} {direction}）</dark_gray>"
+futures-close-all-success: "<green>✔ 期货平仓成功</green> <aqua>{symbol}</aqua> <gray>{direction}</gray>  <dark_gray>共</dark_gray> <white>{count}</white> <dark_gray>笔</dark_gray>  <dark_gray>盈亏</dark_gray> <white>{pnl}</white>  <dark_gray>到账</dark_gray> <white>{payout}</white>"
 
 # ─────────────────────────────── 图表 ───────────────────────────────
 chart-loading: "<gray>  正在获取 <aqua>{symbol}</aqua> 的走势数据…</gray>"
@@ -133,6 +139,8 @@ simulation-buy-success: "<green>✔ 模拟盘买入成功</green>  <aqua>{code}<
 simulation-sell-success: "<green>✔ 模拟盘卖出成功</green>  <aqua>{code}</aqua>  <white>{amount}</white> 股  <dark_gray>成交价</dark_gray> <white>{price}</white>  <dark_gray>到账</dark_gray> <white>{total}</white> <dark_gray>（手续费</dark_gray> <yellow>{fee}</yellow><dark_gray>）</dark_gray>"
 simulation-not-enough-holding: "<red>✗ 模拟盘持仓不足</red>  持有 <white>{hold}</white> 股，无法卖出 <white>{amount}</white> 股"
 simulation-no-holding: "<red>✗ 你没有模拟盘持仓 <aqua>{code}</aqua></red>"
+simulation-no-short: "<red>✗ 你没有 <aqua>{code}</aqua> 的模拟盘空头持仓</red> <dark_gray>（当前 {amount} 股）</dark_gray>"
+simulation-cover-success: "<green>✔ 模拟盘平空成功</green>  <aqua>{code}</aqua>  <white>{amount}</white> 股  <dark_gray>成交价</dark_gray> <white>{price}</white>  <dark_gray>到账</dark_gray> <white>{total}</white> <dark_gray>（手续费</dark_gray> <yellow>{fee}</yellow><dark_gray>）</dark_gray>"
 simulation-unknown-code: "<red>✗ 未知的模拟盘代码 <aqua>{code}</aqua>（格式 SIM001~SIM2999）</red>"
 simulation-suspended: "<red>✗ 模拟股 <aqua>{code}</aqua> 已停牌，暂不可交易。</red>"
 simulation-disabled: "<red>✗ 模拟盘已在配置中关闭（simulation.enabled: false）。</red>"
@@ -192,6 +200,8 @@ usage: |
   <white>/mstock <代码></white>                <dark_gray>查询股票实时行情</dark_gray>
   <click:run_command:'/mstock buy '><hover:show_text:'<gray>/mstock buy &lt;代码&gt; &lt;数量&gt;</gray>'><white>/mstock buy <代码> <数量></white></hover></click>   <dark_gray>买入股票</dark_gray>
   <click:run_command:'/mstock sell '><hover:show_text:'<gray>/mstock sell &lt;代码&gt; &lt;数量&gt;</gray>'><white>/mstock sell <代码> <数量></white></hover></click>  <dark_gray>卖出股票</dark_gray>
+  <click:run_command:'/mstock short '><hover:show_text:'<gray>/mstock short &lt;代码&gt; &lt;数量&gt; [杠杆]</gray>'><white>/mstock short <代码> &lt;数量&gt;</white></hover></click>  <dark_gray>做空股票（保证金）</dark_gray>
+  <click:run_command:'/mstock cover '><hover:show_text:'<gray>/mstock cover &lt;代码&gt; &lt;数量&gt;</gray>'><white>/mstock cover <代码> &lt;数量&gt;</white></hover></click>  <dark_gray>回补股票空头</dark_gray>
   <click:run_command:'/mstock portfolio'><hover:show_text:'<gray>查看我的持仓</gray>'><white>/mstock portfolio</white></hover></click>          <dark_gray>我的持仓</dark_gray>
   <click:run_command:'/mstock reload'><hover:show_text:'<gray>重载配置文件（需要权限）</gray>'><white>/mstock reload</white></hover></click>             <dark_gray>重载配置（需要权限）</dark_gray>
   <dark_gray>─────────────────────────────────</dark_gray>
@@ -230,6 +240,8 @@ help-page-1: |
   <white>/mstock <代码></white>                     <dark_gray>查询股票实时行情</dark_gray>
   <click:run_command:'/mstock buy '><white>/mstock buy <代码> [数量] [杠杆]</white></click>   <dark_gray>买入股票（省略数量则在聊天栏补输）</dark_gray>
   <click:run_command:'/mstock sell '><white>/mstock sell <代码> [数量]</white></click>  <dark_gray>卖出股票（省略数量则在聊天栏补输）</dark_gray>
+  <click:run_command:'/mstock short '><white>/mstock short <代码> [数量] [杠杆]</white></click>  <dark_gray>做空股票（省略数量则在聊天栏补输）</dark_gray>
+  <click:run_command:'/mstock cover '><white>/mstock cover <代码> [数量]</white></click>  <dark_gray>回补股票空头（省略数量则在聊天栏补输）</dark_gray>
   <click:run_command:'/mstock portfolio'><white>/mstock portfolio</white></click>      <dark_gray>我的持仓（聊天框）</dark_gray>
   <click:run_command:'/mstock positions'><white>/mstock positions</white></click>      <dark_gray>当前持仓明细</dark_gray>
   <click:run_command:'/mstock pg'><white>/mstock pg</white></click>                    <dark_gray>持仓总览 GUI</dark_gray>
@@ -252,6 +264,7 @@ help-page-2: |
   <white>/mstock futures contracts</white>            <dark_gray>列出全部期货合约</dark_gray>
   <white>/mstock futures open <品种> <long|short> [数量]</white>  <dark_gray>期货开仓（数量默认 1）</dark_gray>
   <white>/mstock futures close <仓位ID></white>       <dark_gray>平掉指定期货仓位</dark_gray>
+  <white>/mstock futures close <品种> <long|short></white>  <dark_gray>按合约与方向结清期货仓位</dark_gray>
   <click:run_command:'/mstock futures positions'><white>/mstock futures positions</white></click>  <dark_gray>期货持仓</dark_gray>
   <white>/mstock chart <品种> [周期] [根数]</white>    <dark_gray>聊天框走势图（周期默认 1h，可选 1m/5m/15m/30m/1h/4h/1d）</dark_gray>
   <white>/mstock back</white>                          <dark_gray>从 K 线回到进入时的界面</dark_gray>
@@ -263,6 +276,8 @@ help-page-3: |
   <white>/mstock simulation <代码></white>            <dark_gray>查看单只模拟股</dark_gray>
   <click:run_command:'/mstock simulation buy '><white>/mstock simulation buy <代码> [数量] [杠杆]</white></click>    <dark_gray>模拟盘买入（省数量则在聊天栏补输，杠杆大于 1 时走保证金）</dark_gray>
   <click:run_command:'/mstock simulation sell '><white>/mstock simulation sell <代码> [数量]</white></click>         <dark_gray>模拟盘卖出（省数量 = 清空该标的现金持仓）</dark_gray>
+  <click:run_command:'/mstock simulation short '><white>/mstock simulation short <代码> [数量] [杠杆]</white></click>  <dark_gray>模拟盘做空（走保证金，1 倍即全额保证金）</dark_gray>
+  <click:run_command:'/mstock simulation cover '><white>/mstock simulation cover <代码> [数量]</white></click>         <dark_gray>模拟盘平空（省数量 = 清空该标的空头持仓）</dark_gray>
   <click:run_command:'/mstock simulation portfolio'><white>/mstock simulation portfolio</white></click>  <dark_gray>模拟盘持仓</dark_gray>
   <white>/mstock simulation admin <动作> <代码> [参数]</white>  <dark_gray>模拟盘管理台（仅 OP）</dark_gray>
   <white>/mstock simulation admin add <代码> <名称> <板块> <初始价></white>  <dark_gray>注册新模拟股票（3 位大写字母 + 3 位数字）</dark_gray>
@@ -275,6 +290,7 @@ help-footer: |
   <dark_gray>─────────────────────────────────</dark_gray>
   <click:run_command:'/mstock help {prev}'><hover:show_text:'<gray>上一页</gray>'><white>◀ 上一页</white></hover></click>  <gray>第 {page}/{total} 页</gray>  <click:run_command:'/mstock help {next}'><hover:show_text:'<gray>下一页</gray>'><white>下一页 ▶</white></hover></click>
   <dark_gray>  GUI 里的"数量"按钮支持左键 +1 / 右键 -1 / Shift+左键 +10，中键回落到聊天框输入</dark_gray>
+  <dark_gray>  外汇 / 期货 / 模拟盘交易页共用同一个"数量"控件：做空数量与买入数量完全一致，开仓与平仓按钮同页并排</dark_gray>
   <dark_gray>  持仓总览里左键持仓（真实股票 / 模拟盘 / 外汇等保证金） = 操作菜单（卖出或平仓 / 查看K线 / 详情），右键 = 直接看详情</dark_gray>
   <dark_gray>  持仓总览含真实股票、股票杠杆、模拟盘、保证金与期货，条目超出时用 <white>◀ 上一页 / 下一页 ▶</white> 翻页</dark_gray>
 

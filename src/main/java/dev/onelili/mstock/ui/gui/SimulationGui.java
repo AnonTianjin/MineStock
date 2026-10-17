@@ -51,6 +51,7 @@ public class SimulationGui {
 
     // ── 交易页 ────────────────────────────────────────────────────────────────
     public static final int SLOT_TRADE_INFO = 4;
+    public static final int SLOT_SHORT = 19;
     public static final int SLOT_BUY = 20;
     /**
      * 「设置数量」按钮。
@@ -66,6 +67,7 @@ public class SimulationGui {
      */
     public static final int SLOT_QUANTITY = 22;
     public static final int SLOT_SELL = 24;
+    public static final int SLOT_COVER = 25;
     public static final int SLOT_CHART = 40;
     public static final int SLOT_BACK_TO_LIST = 45;
     // 49 = GuiItems.SLOT_BACK_TO_MENU
@@ -238,6 +240,15 @@ public class SimulationGui {
                                 : NamedTextColor.RED)),
                 lore));
 
+        inventory.setItem(SLOT_SHORT, GuiItems.button(Material.MAGENTA_DYE,
+                Component.text("做空").color(NamedTextColor.LIGHT_PURPLE),
+                List.of(
+                        GuiItems.line("数量", ForexGui.formatQty(quantity), NamedTextColor.WHITE),
+                        GuiItems.label("等价于 /mstock simulation short " + code + " "
+                                + ForexGui.formatQty(quantity)),
+                        GuiItems.label("做空走保证金：1 倍即全额保证金"),
+                        GuiItems.label("权限 minestock.simulation.use"))));
+
         inventory.setItem(SLOT_BUY, GuiItems.button(Material.LIME_DYE,
                 Component.text("买入（做多）").color(NamedTextColor.GREEN),
                 List.of(
@@ -255,11 +266,21 @@ public class SimulationGui {
                         GuiItems.label("输入 cancel 取消"))));
 
         inventory.setItem(SLOT_SELL, GuiItems.button(Material.RED_DYE,
-                Component.text("卖出（平多 / 平空）").color(NamedTextColor.RED),
+                Component.text("卖出（平多）").color(NamedTextColor.RED),
                 List.of(
                         GuiItems.line("数量", ForexGui.formatQty(quantity), NamedTextColor.WHITE),
                         GuiItems.label("等价于 /mstock simulation sell " + code + " "
                                 + ForexGui.formatQty(quantity)),
+                        GuiItems.label("只平多头，不动空单"),
+                        GuiItems.label("权限 minestock.simulation.use"))));
+
+        inventory.setItem(SLOT_COVER, GuiItems.button(Material.ORANGE_DYE,
+                Component.text("平空").color(NamedTextColor.GOLD),
+                List.of(
+                        GuiItems.line("数量", ForexGui.formatQty(quantity), NamedTextColor.WHITE),
+                        GuiItems.label("等价于 /mstock simulation cover " + code + " "
+                                + ForexGui.formatQty(quantity)),
+                        GuiItems.label("按数量回补空头，不动多单"),
                         GuiItems.label("权限 minestock.simulation.use"))));
 
         inventory.setItem(SLOT_CHART, GuiItems.button(Material.FILLED_MAP,
