@@ -46,6 +46,13 @@ public class PortfolioGUIListener implements Listener {
             return;
         }
 
+        // 返回统一主菜单（与 /mstock menu 等价）
+        if (name.contains("返回主菜单")) {
+            player.closeInventory();
+            player.performCommand("mstock menu");
+            return;
+        }
+
         // 如果是股票持仓项（根据 lore 判断），提取股票代码
         if (!meta.hasLore()) return;
         String stockCode = extractStockCode(name);

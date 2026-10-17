@@ -2,6 +2,7 @@ package dev.onelili.mstock.economy;
 
 import net.milkbowl.vault.economy.Economy;
 import net.milkbowl.vault.economy.EconomyResponse;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.ServicesManager;
@@ -42,6 +43,27 @@ public class EconomyService {
 
     /** 收款，返回是否成功 */
     public boolean deposit(Player player, double amount) {
+        EconomyResponse resp = economy.depositPlayer(player, amount);
+        return resp.transactionSuccess();
+    }
+
+    // ── 离线安全的重载 ───────────────────────────────────────────────────────
+    // 强平与期货盯市可能在玩家离线时结算，因此需要 OfflinePlayer 版本。
+
+    public double getBalance(OfflinePlayer player) {
+        return economy.getBalance(player);
+    }
+
+    public boolean has(OfflinePlayer player, double amount) {
+        return economy.has(player, amount);
+    }
+
+    public boolean withdraw(OfflinePlayer player, double amount) {
+        EconomyResponse resp = economy.withdrawPlayer(player, amount);
+        return resp.transactionSuccess();
+    }
+
+    public boolean deposit(OfflinePlayer player, double amount) {
         EconomyResponse resp = economy.depositPlayer(player, amount);
         return resp.transactionSuccess();
     }

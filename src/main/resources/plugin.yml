@@ -9,11 +9,11 @@ depend: [ Vault ]
 commands:
   mstock:
     description: 股票市场命令
-    usage: /mstock [recommended|<代码>|buy|sell|portfolio|pg]
+    usage: /mstock [menu|help [页码]|leverage|margin|forex|futures|chart|back|recommended|simulation|<代码>|buy|sell|portfolio|positions|pg|reload]
     permission: minestock.use
   stock:
-    description: 股票市场命令
-    usage: /stock [recommended|<代码>|buy|sell|portfolio|pg]
+    description: 股票市场命令（/mstock 的别名，行为与原版一致）
+    usage: /stock [menu|help [页码]|leverage|margin|forex|futures|chart|back|recommended|simulation|<代码>|buy|sell|portfolio|positions|pg|reload]
     permission: minestock.use
 permissions:
   minestock.use:
@@ -21,4 +21,25 @@ permissions:
     default: true
   minestock.admin:
     description: 允许重载 MineStock 配置
+    default: op
+  minestock.menu:
+    description: 允许打开 MineStock 统一主菜单
+    default: true
+  minestock.leverage.set:
+    description: 允许调整个人杠杆倍数
+    default: true
+  minestock.forex.trade:
+    description: 允许进行外汇买入 / 卖出
+    default: true
+  minestock.futures.trade:
+    description: 允许开仓 / 平仓期货合约
+    default: true
+  minestock.chart:
+    description: 允许在聊天框查看 K 线走势图
+    default: true
+  minestock.simulation.use:
+    description: 允许使用模拟盘行情、交易与持仓
+    default: true
+  minestock.simulation.admin:
+    description: 允许管理模拟盘（价格 / 停牌 / 联动 / 定时等）
     default: op

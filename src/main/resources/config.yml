@@ -24,7 +24,10 @@ api-cooldown-ms: 1000
 
 price-ratio: 1.0
 
-# 交易手续费费率（百分比），默认 0.5%，设为 0 表示免手续费
+# 交易手续费费率，单位是「百分数」（不是小数费率）。
+#   0.5 = 0.5%（默认）   1.0 = 1%   0.1 = 0.1%   0 = 免手续费
+# 负值按 0 处理。这个值对所有路径统一生效：
+# 真实股票 / 股票杠杆 / 外汇 / 期货 / 模拟盘，没有独立开关。
 transaction-fee-percent: 0.5
 
 # K线数据缓存时间（毫秒），默认 5 分钟
@@ -33,10 +36,113 @@ kline-cache-ms: 300000
 # 美股 API 配置（按优先级排列，失败自动切换）
 # apikeys 支持多个 key，请求会均匀分配到每个 key（round-robin）
 # 兼容旧格式：若只填写 apikey（单项），会自动当作单元素列表处理
+#
+# ⚠ 美股行情必须自备 API Key（免费额度即可）：
+#   不填 key 时 finnhub / twelvedata 都会拒绝请求，/mstock buy AAPL 之类会报"获取行情失败"。
+#   A 股（新浪）、港股（新浪 / 腾讯）、外汇与虚拟货币（biquote）均无需 Key。
 us-stock-apis:
   - name: finnhub
-    apikeys:
-      - ""
+    apikeys: []
+    # 示例：apikeys: ["your-finnhub-key"]
   - name: twelvedata
-    apikeys:
-      - ""
+    apikeys: []
+    # 示例：apikeys: ["key1", "key2"]
+
+# ─────────────────────────────── 杠杆交易 ───────────────────────────────
+# 保证金率定义：(margin + 未实现盈亏) / margin，因此开仓瞬间恒为 100%，
+# 与杠杆倍数解耦。若改成"权益 / 名义价值"，默认 10 倍杠杆开仓即为 10%，
+# 会立刻触发强平，下面的默认值将自相矛盾。
+leverage:
+  # 允许玩家设置的最大杠杆倍数
+  max-leverage: 100
+  # 玩家未设置过时的兜底默认倍数。
+  # 注意：外汇 / CFD 的实际默认值由下方 forex.default-leverage 决定，
+  # 本键仅在 forex.default-leverage 缺失时作为回落。
+  default-leverage: 10
+  # 保证金率降到该比例时发送追保通知
+  margin-call-threshold: 0.5
+  # 保证金率降到该比例时强制平仓
+  liquidation-threshold: 0.1
+  # 维持保证金率，用于精确定价强平价
+  maintenance-margin-rate: 0.005
+  # 强平巡检周期（秒）
+  liquidation-sweep-seconds: 30
+  # ── 股票杠杆（与外汇分开配置）──
+  # 是否允许股票使用杠杆；关闭后股票只能全额现金买入
+  stock:
+    enabled: true
+    # 股票允许的最大杠杆倍数（默认比外汇保守）
+    max-leverage: 10
+    # 股票默认杠杆；1 表示默认全额现金买入（与历史行为一致），玩家可自行调高
+    default-leverage: 1
+
+# ─────────────────────────────── 外汇交易 ───────────────────────────────
+forex:
+  # false 只关闭外汇【下单】，行情 / K线 / 搜索仍然可用
+  enabled: true
+  # biquote REST 基地址（无需 API Key）
+  base-url: "https://biquote.io"
+  # 外汇市场默认杠杆倍数：玩家从未设置过外汇杠杆时生效
+  default-leverage: 30
+  # 活跃品种列表缓存时长（毫秒）
+  symbol-cache-ms: 60000
+  # 行情页每页品种数量（上限 45，即品种区格数）
+  symbols-per-page: 45
+
+# ─────────────────────────────── 期货合约 ───────────────────────────────
+futures:
+  enabled: true
+  # 结算价取 ohlc(symbol, "1d", 2) 的最后一根已收盘日线；
+  # 盯市巡检周期（秒），内部判断是否跨结算日
+  settle-check-seconds: 60
+  # 由 initialMarginRate 推算默认杠杆：0.1 → 10 倍
+  default-initial-margin-rate: 0.1
+  # 显式声明合约；留空则从 biquote 品种元数据自动派生（到期日取下一个季末）
+  # contracts:
+  #   - symbol: EURUSD
+  #     expiry-date: "2026-12-31"
+  #     contract-size: 100000
+  #     tick-size: 0.00001
+  #     initial-margin-rate: 0.01
+  contracts: []
+
+# ─────────────────────────────── 聊天框图表 ───────────────────────────────
+chart:
+  # 每玩家冷却（毫秒），独立于 api-cooldown-ms
+  cooldown-ms: 3000
+  # 默认周期与根数
+  default-interval: "1h"
+  default-limit: 20
+  # 最大根数
+  max-limit: 30
+
+# ─────────────────────────────── 模拟盘 ───────────────────────────────
+# 代码格式 SIM + 3 位数字（SIM001~SIM2999），与 A股/港股/美股正则均不冲突。
+# 现金持仓存 simulation_holdings；杠杆仓复用 margin_positions（market=SIMULATION），
+# 因此强平巡检 / 追保通知 / /mstock margin / 部分平仓 / 补交保证金自动覆盖模拟盘。
+# 注意：模拟盘杠杆沿用【股票】制度（Policy.of(SIMULATION) = STOCK），
+# 因此 leverage.stock.enabled: false 或 leverage.stock.max-leverage: 1
+# 会连带把模拟盘杠杆也压到 1x —— 这是刻意的复用，不是 bug。
+# 单位约定：所有 *-percent 均为百分数（10.0 = ±10%）。
+simulation:
+  enabled: true
+  # 价格推进周期（秒），单线程后台任务
+  tick-seconds: 1.0
+  # 首次启用时自动补满的股票数量（1~200）
+  auto-fill-count: 10
+  # 默认随机种子基数：第 i 只股票的种子 = seed-base + i
+  seed-base: 20260101
+  # 默认涨跌停幅度（百分数，夹取 [0.0001, 10.0]）
+  default-limit-percent: 10.0
+  # 默认波动预设：low | normal | high
+  default-preset: normal
+  # 默认边界策略：hard | bounce | soft
+  default-boundary: soft
+  # 管理员绝对上下限（始终硬截断）
+  min-price: 0.01
+  max-price: 1000000.0
+  # 1 分钟 OHLC 环形缓冲容量
+  kline-capacity: 512
+  # 联动共同因子权重
+  link:
+    group-weight: 1.0

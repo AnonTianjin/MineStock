@@ -47,8 +47,147 @@ db-error: "<red>✗ 数据库操作失败，已回滚。</red>"
 reload-success: "<green>✔ 配置已重载。</green>"
 reload-no-permission: "<red>✗ 需要 minestock.admin 权限。</red>"
 
+# ─────────────────────────────── 杠杆 / 保证金 ───────────────────────────────
+leverage-info: "  <dark_gray>当前杠杆</dark_gray> <white>{leverage}x</white>  <dark_gray>默认</dark_gray> <gray>{default}x</gray>  <dark_gray>可用范围</dark_gray> <white>1x ~ {max}x</white>"
+leverage-set: "<green>✔ 杠杆已设置为 <white>{leverage}x</white></green> <dark_gray>(上限 {max}x)</dark_gray>"
+leverage-unchanged: "<gray>  杠杆已经是 <white>{leverage}x</white>，无需调整。</gray>"
+leverage-out-of-range: "<red>✗ 杠杆超出范围，可用范围 1x ~ {max}x。</red>"
+leverage-new-positions-only: "<dark_gray>  该调整只影响新开仓位，已有仓位保留开仓时的杠杆与保证金。</dark_gray>"
+leverage-stock-info: "  <dark_gray>股票杠杆</dark_gray> <white>{leverage}x</white>  <dark_gray>默认</dark_gray> <gray>{default}x</gray>  <dark_gray>可用范围</dark_gray> <white>1x ~ {max}x</white>  <dark_gray>设置</dark_gray><white>/mstock leverage stock <倍数></white>"
+leverage-stock-set: "<green>✔ 股票杠杆已设置为 <white>{leverage}x</white></green> <dark_gray>(上限 {max}x)</dark_gray>"
+leverage-stock-out-of-range: "<red>✗ 股票杠杆超出范围，可用范围 1x ~ {max}x。</red>"
+stock-leverage-hint: "<dark_gray>  当前股票杠杆 <white>{leverage}x</white>：买入将冻结 <white>1/{leverage}</white> 名义价值作为保证金，触发强平线时会被强制平仓。设为 1x 即全额现金买入。</dark_gray>"
+leverage-stock-disabled: "<red>✗ 服务器已关闭股票杠杆（leverage.stock.enabled: false），股票只能全额现金买入。</red>"
+stock-leverage-cash-path: "<red>✗ 1x 表示不借钱，应走现金买入路径。</red>"
+margin-topup-success: "<green>✔ 已补交保证金 <white>{amount}</white></green> <dark_gray>#{id}</dark_gray> <aqua>{symbol}</aqua>  <dark_gray>新保证金</dark_gray> <white>{margin}</white>  <dark_gray>杠杆降至</dark_gray> <white>{leverage}</white>  <dark_gray>新强平价</dark_gray> <white>{liq_price}</white>  <dark_gray>保证金率</dark_gray> <white>{ratio}%</white>"
+margin-call-warning: "<yellow>⚠ 保证金追缴通知</yellow> <dark_gray>#{id}</dark_gray> <aqua>{symbol}</aqua>  <dark_gray>现价</dark_gray> <white>{price}</white>  <dark_gray>保证金率</dark_gray> <yellow>{ratio}%</yellow>  <dark_gray>强平价</dark_gray> <red>{liq_price}</red>\n  <dark_gray>补交保证金可推远强平价：</dark_gray><click:run_command:'/mstock margin topup {id} {suggest}'><hover:show_text:'<gray>点击补交 {suggest}</gray>'><white>[ 一键补交 {suggest} ]</white></hover></click><dark_gray>，或</dark_gray><click:run_command:'/mstock margin close {id}'><hover:show_text:'<gray>点击平仓 #{id}</gray>'><white>[ 平仓止损 ]</white></hover></click>"
+
+margin-header: "<gold>▍保证金持仓</gold> <dark_gray>─────────────────</dark_gray>"
+margin-empty: "<gray>  暂无保证金持仓。使用 <white>/mstock forex buy <品种> <数量></white> 开仓。</gray>"
+margin-summary: "  <dark_gray>持仓</dark_gray> <white>{count}</white> <dark_gray>笔</dark_gray>  <dark_gray>总保证金</dark_gray> <white>{margin}</white>  <dark_gray>未实现盈亏</dark_gray> <white>{pnl}</white>  <dark_gray>保证金率</dark_gray> <white>{ratio}%</white>  <dark_gray>追保/强平 {call}% / {liq}%</dark_gray>"
+margin-item-up: "  <dark_gray>#{id}</dark_gray> <aqua>{symbol}</aqua> <gray>{direction}</gray>  <white>{quantity}</white> <dark_gray>手</dark_gray>  <dark_gray>开仓</dark_gray> <white>{entry}</white>  <dark_gray>杠杆</dark_gray> <white>{leverage}x</white>  <dark_gray>保证金</dark_gray> <white>{margin}</white>  <dark_gray>强平价</dark_gray> <white>{liq_price}</white>  <red>▲ +{pnl}</red>"
+margin-item-down: "  <dark_gray>#{id}</dark_gray> <aqua>{symbol}</aqua> <gray>{direction}</gray>  <white>{quantity}</white> <dark_gray>手</dark_gray>  <dark_gray>开仓</dark_gray> <white>{entry}</white>  <dark_gray>杠杆</dark_gray> <white>{leverage}x</white>  <dark_gray>保证金</dark_gray> <white>{margin}</white>  <dark_gray>强平价</dark_gray> <white>{liq_price}</white>  <green>▼ -{pnl}</green>"
+margin-open-success: "<green>✔ 开仓成功</green> <dark_gray>#{id}</dark_gray> <aqua>{symbol}</aqua> <gray>{direction}</gray>  <white>{quantity}</white> 手 @ <white>{price}</white>  <dark_gray>杠杆</dark_gray> <white>{leverage}x</white>  <dark_gray>冻结保证金</dark_gray> <white>{margin}</white>"
+margin-close-success: "<green>✔ 平仓成功</green> <dark_gray>#{id}</dark_gray> <aqua>{symbol}</aqua>  <dark_gray>价格</dark_gray> <white>{price}</white>  <dark_gray>盈亏</dark_gray> <white>{pnl}</white>  <dark_gray>到账</dark_gray> <white>{payout}</white>"
+margin-close-all-success: "<green>✔ 已平掉 {count} 笔仓位</green>  合计到账 <white>{payout}</white>"
+margin-close-all-partial: "<green>✔ 已平掉 {count} 笔仓位</green>  合计到账 <white>{payout}</white>\n<yellow>⚠ 另有 {suspended} 笔仓位正在停牌，已跳过。</yellow>"
+margin-close-all-suspended: "<red>✗ 你有 {count} 笔仓位正在停牌，停牌期间不能平仓。</red>"
+margin-close-all-blocked: "<red>✗ 没有仓位被平掉：{suspended} 笔因停牌被跳过，其余行情获取失败。</red>"
+margin-close-all-failed: "<red>✗ 没有可平仓的仓位，或行情获取失败。</red>"
+margin-no-positions: "<red>✗ 你当前没有保证金持仓。</red>"
+margin-liquidated: "<red>⚠ 仓位已被强制平仓</red> <dark_gray>#{id}</dark_gray> <aqua>{symbol}</aqua>  <dark_gray>强平价</dark_gray> <white>{price}</white>  <dark_gray>盈亏</dark_gray> <white>{pnl}</white>"
+margin-position-not-found: "<red>✗ 找不到该保证金仓位。</red>"
+
+# ─────────────────────────────── 外汇 ───────────────────────────────
+forex-price-header: "<gold>▍{symbol}</gold> <dark_gray>{desc}</dark_gray>  <white>{price}</white>"
+forex-price-up: "  <dark_gray>日内</dark_gray> <red>▲ +{change}%</red>"
+forex-price-down: "  <dark_gray>日内</dark_gray> <green>▼ -{change}%</green>"
+forex-price-detail: "  <dark_gray>买价 {bid}  卖价 {ask}  日内高 {high}  低 {low}</dark_gray>"
+forex-market-closed: "  <yellow>休市 · 以下为最后成交价</yellow>"
+forex-symbols-failed: "<red>✗ 获取活跃品种失败，请稍后重试。</red>"
+forex-trade-disabled: "<red>✗ 服务器已关闭外汇交易（forex.enabled: false），行情查询仍可用。</red>"
+
+# ─────────────────────────────── 外汇板块与搜索 ───────────────────────────────
+forex-category-invalid: "<red>✗ 未知板块，可用：fiat（国家外汇）、crypto（虚拟货币）。</red>"
+forex-search-prompt: "请在聊天框输入搜索关键词 <dark_gray>（支持代码或中文名，输入 cancel 退出）</dark_gray>："
+forex-search-header: "<gold>▍搜索结果</gold> <dark_gray>关键词</dark_gray> <aqua>{keyword}</aqua> <dark_gray>板块</dark_gray> <white>{category}</white> <dark_gray>命中 {count} 个</dark_gray>"
+forex-search-item: "  <click:run_command:'/mstock forex price {symbol}'><hover:show_text:'<gray>点击查询 {symbol} 实时报价</gray>'><aqua>{symbol}</aqua></hover></click> <gray>{desc}</gray> <dark_gray>[{category}]</dark_gray>"
+forex-search-empty: "<red>✗ 没有匹配的品种</red> <dark_gray>关键词</dark_gray> <aqua>{keyword}</aqua> <dark_gray>板块</dark_gray> <white>{category}</white>"
+forex-search-hint: "<dark_gray>  进入图形界面：</dark_gray><click:run_command:'/mstock forex'><hover:show_text:'<gray>打开外汇板块选择</gray>'><white>/mstock forex</white></hover></click> <dark_gray>关键词 {keyword}，板块 {category}</dark_gray>"
+
+# ─────────────────────────────── 期货 ───────────────────────────────
+futures-open-success: "<green>✔ 期货开仓成功</green> <dark_gray>#{id}</dark_gray> <aqua>{symbol}</aqua> <gray>{direction}</gray>  <white>{quantity}</white> 手 @ <white>{price}</white>  <dark_gray>杠杆</dark_gray> <white>{leverage}x</white>  <dark_gray>保证金</dark_gray> <white>{margin}</white>  <dark_gray>到期 {expiry}</dark_gray>"
+futures-close-success: "<green>✔ 期货平仓成功</green> <dark_gray>#{id}</dark_gray> <aqua>{symbol}</aqua>  <dark_gray>价格</dark_gray> <white>{price}</white>  <dark_gray>盈亏</dark_gray> <white>{pnl}</white>  <dark_gray>到账</dark_gray> <white>{payout}</white>"
+futures-settled: "<gray>  每日盯市</gray> <dark_gray>#{id}</dark_gray> <aqua>{symbol}</aqua>  <dark_gray>结算价</dark_gray> <white>{settle}</white>  <dark_gray>本次</dark_gray> <white>{pnl}</white>  <dark_gray>累计</dark_gray> <white>{total}</white>"
+futures-expired: "<yellow>⚠ 期货合约已到期，自动平仓</yellow> <dark_gray>#{id}</dark_gray> <aqua>{symbol}</aqua>  <dark_gray>结算价</dark_gray> <white>{price}</white>  <dark_gray>盈亏</dark_gray> <white>{pnl}</white>  <dark_gray>到账</dark_gray> <white>{payout}</white>"
+futures-position-not-found: "<red>✗ 找不到该期货持仓。</red>"
+futures-positions-header: "<gold>▍期货持仓</gold> <dark_gray>─────────────────</dark_gray>"
+futures-positions-empty: "<gray>  暂无期货持仓。使用 <white>/mstock futures open <品种> <long|short> <数量></white> 开仓。</gray>"
+futures-position-up: "  <dark_gray>#{id}</dark_gray> <aqua>{symbol}</aqua> <gray>{direction}</gray>  <white>{quantity}</white> <dark_gray>手</dark_gray>  <dark_gray>开仓</dark_gray> <white>{entry}</white>  <dark_gray>保证金</dark_gray> <white>{margin}</white>  <dark_gray>到期 {expiry}</dark_gray>  <red>▲ +{pnl}</red>"
+futures-position-down: "  <dark_gray>#{id}</dark_gray> <aqua>{symbol}</aqua> <gray>{direction}</gray>  <white>{quantity}</white> <dark_gray>手</dark_gray>  <dark_gray>开仓</dark_gray> <white>{entry}</white>  <dark_gray>保证金</dark_gray> <white>{margin}</white>  <dark_gray>到期 {expiry}</dark_gray>  <green>▼ -{pnl}</green>"
+futures-contracts-header: "<gold>▍期货合约</gold> <dark_gray>─────────────────</dark_gray>"
+futures-contracts-empty: "<gray>  当前没有可用合约。</gray>"
+futures-contract-item: "  <aqua>{symbol}</aqua>  <dark_gray>到期</dark_gray> <white>{expiry}</white>  <dark_gray>乘数</dark_gray> <white>{size}</white>  <dark_gray>最小变动</dark_gray> <white>{tick}</white>  <dark_gray>杠杆</dark_gray> <white>{leverage}x</white>"
+futures-contract-not-found: "<red>✗ 未知期货合约 <aqua>{symbol}</aqua>。</red>"
+futures-contract-expired: "<red>✗ 合约 <aqua>{symbol}</aqua> 已到期。</red>"
+futures-no-contract-selected: "<red>✗ 请先选择一个合约。</red>"
+
+# ─────────────────────────────── 图表 ───────────────────────────────
+chart-loading: "<gray>  正在获取 <aqua>{symbol}</aqua> 的走势数据…</gray>"
+chart-hint: "<dark_gray>  提示：鼠标悬停在柱子上可查看该周期的 OHLC 数据。</dark_gray>"
+chart-error: "<red>✗ 走势图获取失败或数据不足，请稍后重试。</red>"
+chart-interval-invalid: "<red>✗ 不支持的 K 线周期，可用：1m 5m 15m 30m 1h 4h 1d。</red>"
+
+# ─────────────────────────────── 交易通用 ───────────────────────────────
+trade-invalid-quantity: "<red>✗ 请输入大于 0 的数量。</red>"
+trade-invalid-symbol: "<red>✗ 请输入有效的品种代码。</red>"
+trade-invalid-direction: "<red>✗ 方向只能是 long 或 short。</red>"
+trade-no-price: "<red>✗ 无法获取实时价格，请稍后重试。</red>"
+gui-quantity-prompt: "请在聊天框输入 <aqua>{code}</aqua> 的数量 <dark_gray>（支持小数，输入 cancel 退出）</dark_gray>："
+
+# ─────────────────────────────── 模拟盘 ───────────────────────────────
+# 代码格式 SIM + 3 位数字（SIM001~SIM2999），与 A股/港股/美股正则均不冲突。
+# 模拟盘与真实盘共用同一份 Vault 余额，但持仓分表：现金存 simulation_holdings，
+# 杠杆仓复用 margin_positions（market=SIMULATION）。
+simulation-buy-success: "<green>✔ 模拟盘买入成功</green>  <aqua>{code}</aqua>  <white>{amount}</white> 股  <dark_gray>成交价</dark_gray> <white>{price}</white>  <dark_gray>合计</dark_gray> <white>{total}</white> <dark_gray>（手续费</dark_gray> <yellow>{fee}</yellow><dark_gray>）</dark_gray>"
+simulation-sell-success: "<green>✔ 模拟盘卖出成功</green>  <aqua>{code}</aqua>  <white>{amount}</white> 股  <dark_gray>成交价</dark_gray> <white>{price}</white>  <dark_gray>到账</dark_gray> <white>{total}</white> <dark_gray>（手续费</dark_gray> <yellow>{fee}</yellow><dark_gray>）</dark_gray>"
+simulation-not-enough-holding: "<red>✗ 模拟盘持仓不足</red>  持有 <white>{hold}</white> 股，无法卖出 <white>{amount}</white> 股"
+simulation-no-holding: "<red>✗ 你没有模拟盘持仓 <aqua>{code}</aqua></red>"
+simulation-unknown-code: "<red>✗ 未知的模拟盘代码 <aqua>{code}</aqua>（格式 SIM001~SIM2999）</red>"
+simulation-suspended: "<red>✗ 模拟股 <aqua>{code}</aqua> 已停牌，暂不可交易。</red>"
+simulation-disabled: "<red>✗ 模拟盘已在配置中关闭（simulation.enabled: false）。</red>"
+simulation-portfolio-header: "<gold>▍我的模拟盘持仓</gold> <dark_gray>─────────────</dark_gray>"
+simulation-portfolio-empty: "<gray>  暂无模拟盘持仓，可用 </gray><white>/mstock simulation buy <代码> <数量></white><gray> 买入。</gray>"
+simulation-portfolio-item: "  <aqua>{code}</aqua> <gray>{name}</gray>  <white>{amount}</white><dark_gray>股</dark_gray>  <dark_gray>均价</dark_gray> <white>{avg_cost}</white>  <dark_gray>现价</dark_gray> <white>{price}</white>  <dark_gray>盈亏</dark_gray> <white>{pnl}</white>  <white>{change}</white>"
+simulation-portfolio-item-up: "  <aqua>{code}</aqua> <gray>{name}</gray>  <white>{amount}</white><dark_gray>股</dark_gray>  <dark_gray>均价</dark_gray> <white>{avg_cost}</white>  <dark_gray>现价</dark_gray> <white>{price}</white>  <red>▲ +{change}</red>  <dark_gray>盈亏</dark_gray> <white>{pnl}</white>"
+simulation-portfolio-item-down: "  <aqua>{code}</aqua> <gray>{name}</gray>  <white>{amount}</white><dark_gray>股</dark_gray>  <dark_gray>均价</dark_gray> <white>{avg_cost}</white>  <dark_gray>现价</dark_gray> <white>{price}</white>  <green>▼ {change}</green>  <dark_gray>盈亏</dark_gray> <white>{pnl}</white>"
+simulation-admin-no-permission: "<red>✗ 需要 minestock.simulation.admin 权限。</red>"
+simulation-admin-success: "<green>✔ 模拟盘操作已执行</green>  <dark_gray>{action}</dark_gray> <aqua>{code}</aqua> <white>{value}</white>"
+simulation-admin-setprice: "<green>✔ 已定值</green>  <aqua>{code}</aqua>  <white>{price}</white> <dark_gray>金币（与 target 互斥）</dark_gray>"
+simulation-admin-target: "<green>✔ 已设置目标涨幅</green>  <aqua>{code}</aqua>  <white>{percent}%</white> <dark_gray>⇒</dark_gray> <white>{value}</white> <dark_gray>金币</dark_gray>"
+simulation-admin-jump: "<green>✔ 已冲击</green>  <aqua>{code}</aqua>  <white>{percent}%</white>"
+simulation-admin-pause: "<green>✔ 暂停推进已切换</green>  <aqua>{code}</aqua>  <white>{state}</white>"
+simulation-admin-suspend: "<green>✔ 停牌已切换</green>  <aqua>{code}</aqua>  <white>{state}</white>"
+simulation-admin-tradable: "<green>✔ 可交易已切换</green>  <aqua>{code}</aqua>  <white>{state}</white>"
+simulation-admin-slope: "<green>✔ 已设置斜率</green>  <aqua>{code}</aqua>  <white>{per_ms}</white> <dark_gray>/毫秒，持续</dark_gray> <white>{ms}</white> <dark_gray>毫秒</dark_gray>"
+simulation-admin-amplitude: "<green>✔ 已设置波动倍数</green>  <aqua>{code}</aqua>  <white>{value}</white>"
+simulation-admin-preset: "<green>✔ 已设置波动预设</green>  <aqua>{code}</aqua>  <white>{value}</white>"
+simulation-admin-boundary: "<green>✔ 已设置边界策略</green>  <aqua>{code}</aqua>  <white>{value}</white>"
+simulation-admin-bounds: "<green>✔ 已设置绝对上下限</green>  <aqua>{code}</aqua>  <white>{min}</white> <dark_gray>~</dark_gray> <white>{max}</white>"
+simulation-admin-limit: "<green>✔ 已设置涨跌停幅度</green>  <aqua>{code}</aqua>  <white>±{percent}%</white>"
+simulation-admin-link: "<green>✔ 已建立联动</green>  <aqua>{code_a}</aqua> <dark_gray>↔</dark_gray> <aqua>{code_b}</aqua>  <white>ρ={rho}</white>"
+simulation-admin-schedule: "<green>✔ 已创建定时操作</green>  <dark_gray>#{id}</dark_gray> <aqua>{code}</aqua>  <white>{time}</white>  <white>{percent}%</white>  <dark_gray>{mode}</dark_gray>"
+simulation-admin-schedules: "<gold>▍模拟盘定时操作</gold> <dark_gray>─────────────</dark_gray>"
+simulation-admin-schedules-item: "  <dark_gray>#{id}</dark_gray> <aqua>{code}</aqua>  <white>{time}</white>  <white>{percent}%</white>  <dark_gray>{mode}</dark_gray>"
+simulation-admin-schedules-empty: "<gray>  暂无定时操作。</gray>"
+simulation-admin-unschedule: "<green>✔ 已删除定时操作</green>  <dark_gray>#{id}</dark_gray>"
+simulation-admin-seed: "<green>✔ 已重设随机种子</green>  <aqua>{code}</aqua>  <white>{seed}</white> <dark_gray>（同种子 ⇒ 同一条价格路径）</dark_gray>"
+simulation-admin-resume: "<green>✔ 已恢复自动</green>  <aqua>{code}</aqua> <dark_gray>（不清除停牌与禁售）</dark_gray>"
+simulation-admin-reset: "<green>✔ 已重置</green>  <aqua>{code}</aqua> <dark_gray>回到初始价，种子</dark_gray> <white>{seed}</white>"
+simulation-admin-add-ok: "<green>✔ 已注册模拟股票</green>  <aqua>{code}</aqua> <white>{name}</white> <dark_gray>初始价</dark_gray> <white>{price}</white>"
+simulation-admin-add-exists: "<red>✗ 代码已存在</red>  <aqua>{code}</aqua> <dark_gray>换一个代码，或先用 </dark_gray><white>/mstock simulation admin remove {code}</white>"
+simulation-admin-remove-ok: "<green>✔ 已注销模拟股票</green>  <aqua>{code}</aqua> <dark_gray>（玩家持仓与历史 K 线保留）</dark_gray>"
+simulation-admin-remove-missing: "<red>✗ 没有这只模拟股票</red>  <aqua>{code}</aqua>"
+simulation-admin-invalid-args: "<red>✗ 参数非法</red>  用法：<white>{usage}</white>"
+# 上下限的大小关系单独一条：GUI 的 ± 步进按钮也会走到同一个校验点，
+# 玩家需要看到的是"为什么被拒绝"，而不是一串用法示例。
+simulation-admin-bounds-order: "<red>✗ 上限必须大于下限</red>  <dark_gray>（收到 </dark_gray><white>{min}</white><dark_gray> ~ </dark_gray><white>{max}</white><dark_gray>）</dark_gray>  <gray>请调高上限或调低下限。</gray>"
+
+# ── GUI 查看 K 线后的返回入口 ───────────────────────────────────────────────────
+# 由 GUI 点击"查看K线"时记下的返回指令；一次性消费，回到原界面后即失效。
+chart-return-line: "<click:run_command:'{command}'><hover:show_text:'<gray>回到 {label}</gray>'><white>◀ 返回 {label}</white></hover></click>  <dark_gray>（点击执行 {command}）</dark_gray>"
+
+# 没有可返回的目标时（手敲图表命令、或已经返回过一次）。
+# 明确说"没有"而不是静默无反应 —— 静默会让玩家以为是插件卡了。
+chart-return-none: "<gray>没有可返回的界面。</gray> <dark_gray>从界面点开 K 线后可用 </dark_gray><white>/mstock back</white><dark_gray> 回到原处。</dark_gray>"
+
+# 交易提交后的即时回执：网络取价最坏要等到 HTTP 超时（12 秒），
+# 没有这一行玩家会以为"点了没反应"。
+trade-processing: "<gray>… 正在处理 </gray><white>{action}</white><gray>，请稍候</gray>"
+
 usage: |
   <gold>▍MineStock</gold> <dark_gray>─────────────────────────</dark_gray>
+  <click:run_command:'/mstock menu'><hover:show_text:'<gray>打开图形化主菜单</gray>'><white>/mstock</white></hover></click>                   <dark_gray>打开主菜单 GUI</dark_gray>
   <click:run_command:'/mstock recommended'><hover:show_text:'<gray>查看今日推荐股票</gray>'><white>/mstock recommended</white></hover></click>  <dark_gray>今日推荐股票</dark_gray>
   <white>/mstock <代码></white>                <dark_gray>查询股票实时行情</dark_gray>
   <click:run_command:'/mstock buy '><hover:show_text:'<gray>/mstock buy &lt;代码&gt; &lt;数量&gt;</gray>'><white>/mstock buy <代码> <数量></white></hover></click>   <dark_gray>买入股票</dark_gray>
@@ -56,3 +195,88 @@ usage: |
   <click:run_command:'/mstock portfolio'><hover:show_text:'<gray>查看我的持仓</gray>'><white>/mstock portfolio</white></hover></click>          <dark_gray>我的持仓</dark_gray>
   <click:run_command:'/mstock reload'><hover:show_text:'<gray>重载配置文件（需要权限）</gray>'><white>/mstock reload</white></hover></click>             <dark_gray>重载配置（需要权限）</dark_gray>
   <dark_gray>─────────────────────────────────</dark_gray>
+  <gold>▍杠杆 / 外汇 / 期货 / 图表</gold>
+  <click:run_command:'/mstock leverage'><hover:show_text:'<gray>/mstock leverage [倍数]</gray>'><white>/mstock leverage [倍数]</white></hover></click>      <dark_gray>查看 / 设置个人杠杆</dark_gray>
+  <click:run_command:'/mstock margin'><hover:show_text:'<gray>查看保证金与强平价</gray>'><white>/mstock margin</white></hover></click>                <dark_gray>保证金与强平价</dark_gray>
+  <click:run_command:'/mstock forex price EURUSD'><hover:show_text:'<gray>/mstock forex price &lt;品种&gt;</gray>'><white>/mstock forex price EURUSD</white></hover></click>  <dark_gray>外汇实时报价（mid）</dark_gray>
+  <click:run_command:'/mstock forex buy '><hover:show_text:'<gray>/mstock forex buy &lt;品种&gt; &lt;数量&gt;</gray>'><white>/mstock forex buy <品种> <数量></white></hover></click>  <dark_gray>外汇买入（开多）</dark_gray>
+  <click:run_command:'/mstock forex sell '><hover:show_text:'<gray>/mstock forex sell &lt;品种&gt; &lt;数量&gt;</gray>'><white>/mstock forex sell <品种> <数量></white></hover></click>  <dark_gray>外汇卖出（开空）</dark_gray>
+  <click:run_command:'/mstock futures positions'><hover:show_text:'<gray>查看期货持仓</gray>'><white>/mstock futures positions</white></hover></click>  <dark_gray>期货持仓</dark_gray>
+  <click:run_command:'/mstock futures open '><hover:show_text:'<gray>/mstock futures open &lt;品种&gt; &lt;long|short&gt; [数量]</gray>'><white>/mstock futures open <品种> <long|short> [数量]</white></hover></click>  <dark_gray>期货开仓（数量默认 1）</dark_gray>
+  <click:run_command:'/mstock chart EURUSD'><hover:show_text:'<gray>/mstock chart &lt;品种&gt; [周期] [根数]</gray>'><white>/mstock chart <品种> [周期] [根数]</white></hover></click>  <dark_gray>聊天框走势图</dark_gray>
+  <dark_gray>─────────────────────────────────</dark_gray>
+  <gold>▍模拟盘</gold>
+  <click:run_command:'/mstock simulation'><hover:show_text:'<gray>用虚拟代码 SIM001~SIM010 练习交易</gray>'><white>/mstock simulation</white></hover></click>        <dark_gray>模拟盘行情列表</dark_gray>
+  <click:run_command:'/mstock simulation buy '><hover:show_text:'<gray>/mstock simulation buy &lt;代码&gt; [数量] [杠杆]</gray>'><white>/mstock simulation buy <代码> [数量]</white></hover></click>  <dark_gray>模拟盘买入（杠杆 &gt;1 走保证金）</dark_gray>
+  <click:run_command:'/mstock simulation sell '><hover:show_text:'<gray>/mstock simulation sell &lt;代码&gt; [数量]</gray>'><white>/mstock simulation sell <代码> [数量]</white></hover></click>  <dark_gray>模拟盘卖出（省数量 = 清仓）</dark_gray>
+  <click:run_command:'/mstock simulation portfolio'><hover:show_text:'<gray>查看模拟盘现金持仓</gray>'><white>/mstock simulation portfolio</white></hover></click>  <dark_gray>模拟盘持仓</dark_gray>
+  <dark_gray>  模拟盘与真实盘共用同一份 Vault 余额，但持仓分表（现金 simulation_holdings / 杠杆 market=SIMULATION）</dark_gray>
+  <dark_gray>─────────────────────────────────</dark_gray>
+
+# ── /mstock help [页码] ────────────────────────────────────────────────────────
+# 上面那一段 usage 仍然作为"参数非法"时的短提示（十几处调用点共用），
+# 这里的三页是完整的指令清单：原来 help 只贴 usage，漏掉的 margin close /
+# margin topup / futures close / futures contracts / simulation admin 等
+# 全部补在新的分页里，不改动 usage 本身，避免影响那些短提示。
+
+help-header: |
+  <gold>▍MineStock 指令一览</gold> <dark_gray>─────────</dark_gray> <gray>第 {page}/{total} 页</gray>
+
+help-page-1: |
+  <gold>▍基础</gold>
+  <click:run_command:'/mstock menu'><white>/mstock</white> <dark_gray>或</dark_gray> <white>/mstock menu</white></click>   <dark_gray>打开主菜单 GUI</dark_gray>
+  <white>/mstock help [页码]</white>              <dark_gray>本帮助（共 3 页）</dark_gray>
+  <click:run_command:'/mstock recommended'><white>/mstock recommended</white></click>  <dark_gray>今日推荐股票</dark_gray>
+  <white>/mstock <代码></white>                     <dark_gray>查询股票实时行情</dark_gray>
+  <click:run_command:'/mstock buy '><white>/mstock buy <代码> [数量] [杠杆]</white></click>   <dark_gray>买入股票（省略数量则在聊天栏补输）</dark_gray>
+  <click:run_command:'/mstock sell '><white>/mstock sell <代码> [数量]</white></click>  <dark_gray>卖出股票（省略数量则在聊天栏补输）</dark_gray>
+  <click:run_command:'/mstock portfolio'><white>/mstock portfolio</white></click>      <dark_gray>我的持仓（聊天框）</dark_gray>
+  <click:run_command:'/mstock positions'><white>/mstock positions</white></click>      <dark_gray>当前持仓明细</dark_gray>
+  <click:run_command:'/mstock pg'><white>/mstock pg</white></click>                    <dark_gray>持仓总览 GUI</dark_gray>
+
+help-page-2: |
+  <gold>▍杠杆 / 保证金</gold>
+  <click:run_command:'/mstock leverage'><white>/mstock leverage [倍数]</white></click>           <dark_gray>查看 / 设置个人杠杆</dark_gray>
+  <white>/mstock leverage stock <倍数></white>        <dark_gray>单独设置股票杠杆</dark_gray>
+  <click:run_command:'/mstock margin'><white>/mstock margin</white></click>                      <dark_gray>保证金与强平价</dark_gray>
+  <white>/mstock margin close <仓位ID></white>        <dark_gray>平掉指定杠杆仓位</dark_gray>
+  <white>/mstock margin closeall</white>              <dark_gray>平掉全部杠杆仓位</dark_gray>
+  <white>/mstock margin topup <仓位ID> <金额></white>  <dark_gray>补充保证金（等价 add）</dark_gray>
+  <gold>▍外汇 / 期货 / 图表</gold>
+  <white>/mstock forex price <品种></white>           <dark_gray>外汇实时报价（mid）</dark_gray>
+  <click:run_command:'/mstock forex buy '><white>/mstock forex buy <品种> <数量></white></click>   <dark_gray>外汇买入（开多）</dark_gray>
+  <click:run_command:'/mstock forex sell '><white>/mstock forex sell <品种> <数量></white></click>  <dark_gray>外汇卖出（开空）</dark_gray>
+  <white>/mstock forex fiat|crypto|list</white>       <dark_gray>按板块列出可交易品种</dark_gray>
+  <white>/mstock forex search <关键词></white>        <dark_gray>搜索外汇品种</dark_gray>
+  <white>/mstock forex chart <品种></white>           <dark_gray>外汇 K 线</dark_gray>
+  <white>/mstock futures contracts</white>            <dark_gray>列出全部期货合约</dark_gray>
+  <white>/mstock futures open <品种> <long|short> [数量]</white>  <dark_gray>期货开仓（数量默认 1）</dark_gray>
+  <white>/mstock futures close <仓位ID></white>       <dark_gray>平掉指定期货仓位</dark_gray>
+  <click:run_command:'/mstock futures positions'><white>/mstock futures positions</white></click>  <dark_gray>期货持仓</dark_gray>
+  <white>/mstock chart <品种> [周期] [根数]</white>    <dark_gray>聊天框走势图（周期默认 1h，可选 1m/5m/15m/30m/1h/4h/1d）</dark_gray>
+  <white>/mstock back</white>                          <dark_gray>从 K 线回到进入时的界面</dark_gray>
+
+help-page-3: |
+  <gold>▍模拟盘（虚拟代码 SIM001~SIM010）</gold>
+  <click:run_command:'/mstock simulation'><white>/mstock simulation</white></click>              <dark_gray>模拟盘行情列表</dark_gray>
+  <white>/mstock simulation list [页码]</white>       <dark_gray>模拟盘行情列表（指定页）</dark_gray>
+  <white>/mstock simulation <代码></white>            <dark_gray>查看单只模拟股</dark_gray>
+  <click:run_command:'/mstock simulation buy '><white>/mstock simulation buy <代码> [数量] [杠杆]</white></click>    <dark_gray>模拟盘买入（省数量则在聊天栏补输，杠杆大于 1 时走保证金）</dark_gray>
+  <click:run_command:'/mstock simulation sell '><white>/mstock simulation sell <代码> [数量]</white></click>         <dark_gray>模拟盘卖出（省数量 = 清空该标的现金持仓）</dark_gray>
+  <click:run_command:'/mstock simulation portfolio'><white>/mstock simulation portfolio</white></click>  <dark_gray>模拟盘持仓</dark_gray>
+  <white>/mstock simulation admin <动作> <代码> [参数]</white>  <dark_gray>模拟盘管理台（仅 OP）</dark_gray>
+  <white>/mstock simulation admin add <代码> <名称> <板块> <初始价></white>  <dark_gray>注册新模拟股票（3 位大写字母 + 3 位数字）</dark_gray>
+  <white>/mstock simulation admin remove <代码></white>  <dark_gray>注销模拟股票（保留玩家持仓与历史 K 线）</dark_gray>
+  <gold>▍其他</gold>
+  <click:run_command:'/mstock reload'><white>/mstock reload</white></click>                      <dark_gray>重载配置（需要权限）</dark_gray>
+  <dark_gray>  /mstock 与 /stock 等价；模拟盘与真实盘共用同一份 Vault 余额，持仓分表</dark_gray>
+
+help-footer: |
+  <dark_gray>─────────────────────────────────</dark_gray>
+  <click:run_command:'/mstock help {prev}'><hover:show_text:'<gray>上一页</gray>'><white>◀ 上一页</white></hover></click>  <gray>第 {page}/{total} 页</gray>  <click:run_command:'/mstock help {next}'><hover:show_text:'<gray>下一页</gray>'><white>下一页 ▶</white></hover></click>
+  <dark_gray>  GUI 里的"数量"按钮支持左键 +1 / 右键 -1 / Shift+左键 +10，中键回落到聊天框输入</dark_gray>
+  <dark_gray>  持仓总览里左键持仓（真实股票 / 模拟盘 / 外汇等保证金） = 操作菜单（卖出或平仓 / 查看K线 / 详情），右键 = 直接看详情</dark_gray>
+  <dark_gray>  持仓总览含真实股票、股票杠杆、模拟盘、保证金与期货，条目超出时用 <white>◀ 上一页 / 下一页 ▶</white> 翻页</dark_gray>
+
+help-page-invalid: "<red>✗ 页码非法</red> <dark_gray>（输入 <white>{input}</white>）</dark_gray>  用法：<white>/mstock help [1-{total}]</white>"
+

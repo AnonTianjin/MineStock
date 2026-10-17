@@ -11,6 +11,15 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 
+/**
+ * 聊天框数量输入。
+ *
+ * <p>股票买卖（BUY/SELL）沿用原有的"输入数量 → 确认页"流程；
+ * GUI 的数量输入（FOREX_* / FUTURES_OPEN）复用同一会话通道，
+ * 由 {@code MStockCommand#consumeQuantityInput} 消费并回调刷新界面。
+ *
+ * <p>股票数量是整数，外汇 / 期货数量允许小数。
+ */
 public class ChatInputListener implements Listener {
     private final MineStock plugin;
     private final ChatInputSession session;
@@ -32,7 +41,32 @@ public class ChatInputListener implements Listener {
 
         if ("取消".equalsIgnoreCase(input) || "cancel".equalsIgnoreCase(input)) {
             session.clearSession(player.getUniqueId());
+            plugin.getCommandExecutor().cancelQuantityInput(player);
             plugin.getLang().send(player, "input-cancelled");
+            return;
+        }
+
+        // 品种搜索：纯文本，不做数字校验。
+        if (action.isTextInput()) {
+            action.setTextInput(input);
+            CompatScheduler.get().runOnEntity(plugin, player,
+                    () -> plugin.getCommandExecutor().consumeSymbolSearch(player, input));
+            return;
+        }
+
+        // GUI 数量输入：允许小数（外汇手数 / 加密币数量 / 期货手数）。
+        if (!action.isStockTrade()) {
+            double decimal;
+            try {
+                decimal = Double.parseDouble(input);
+                if (!Double.isFinite(decimal) || decimal <= 0) throw new NumberFormatException();
+            } catch (NumberFormatException e) {
+                plugin.getLang().send(player, "input-invalid");
+                return;
+            }
+            action.setDecimalAmount(decimal);
+            CompatScheduler.get().runOnEntity(plugin, player,
+                    () -> plugin.getCommandExecutor().consumeQuantityInput(player, action, decimal));
             return;
         }
 

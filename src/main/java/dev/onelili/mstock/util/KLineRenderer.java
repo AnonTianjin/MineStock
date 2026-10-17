@@ -29,7 +29,6 @@ private static final String UP       = "<color:#FF5555>";
 
         List<KLinePoint> sampled = sample(points, MAX_POINTS);
         int n = sampled.size();
-
         double globalMax = sampled.stream()
                 .mapToDouble(p -> Math.max(p.getHigh(), p.getClose())).max().orElse(1);
         double globalMin = sampled.stream()
@@ -132,5 +131,51 @@ private static final String UP       = "<color:#FF5555>";
             result.add(points.get((int) Math.round(i * step)));
         }
         return result;
+    }
+
+    // ── 带标题的调用方式 ─────────────────────────────────────────────────────
+    // 原 render(List<KLinePoint>) 的行为与输出完全不变；下面这个重载只是把标题行与
+    // 最新价摘要包在外面，供 /mstock chart 与 /mstock forex chart 使用。
+    // 数据源已扩展到外汇 / 期货 —— 只要 OHLC 能转成 KLinePoint，绘制逻辑完全复用。
+
+    /**
+     * 渲染带标题的走势图。
+     *
+     * @param symbol   品种代码，如 {@code EURUSD}
+     * @param interval K 线周期标签，如 {@code 1h}
+     * @param points   最早在前的 OHLC 序列
+     * @return 每条对应一行聊天消息；数据不足时返回空列表（由调用方发错误提示）
+     */
+    public static List<String> render(String symbol, String interval, List<KLinePoint> points) {
+        if (points == null || points.size() < 2) return List.of();
+
+        List<String> lines = new ArrayList<>(HEIGHT + 4);
+
+        String safeSymbol = symbol == null ? "?" : symbol.toUpperCase(java.util.Locale.ROOT);
+        String safeInterval = interval == null || interval.isBlank() ? "1h" : interval;
+        lines.add("<gold>▍</gold><white>" + safeSymbol + "</white> <dark_gray>"
+                + safeInterval + " 走势图 (最近 " + points.size() + " 根)</dark_gray>");
+
+        lines.addAll(render(points));
+        lines.add(buildSummary(points));
+        return lines;
+    }
+
+    /** 最新价与相对前一根的涨跌，涨 {@code §a}/红、跌 {@code §c}/绿，与原图配色一致。 */
+    private static String buildSummary(List<KLinePoint> points) {
+        KLinePoint last = points.get(points.size() - 1);
+        KLinePoint previous = points.get(points.size() - 2);
+        double reference = previous.getClose();
+        double change = reference != 0
+                ? (last.getClose() - reference) / reference * 100.0
+                : 0.0;
+        boolean up = change >= 0;
+        String color = up ? UP : DOWN;
+        return DG + "最新: </dark_gray><white>" + fmt(last.getClose()) + "</white> "
+                + color + (up ? "+" : "") + fmt(change) + "%" + colorTagClose();
+    }
+
+    private static String colorTagClose() {
+        return "</color>";
     }
 }

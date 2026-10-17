@@ -165,7 +165,7 @@ public class UsStockApi implements StockSource {
         }
         long toTs = Instant.now().getEpochSecond();
         long fromTs = LocalDate.now(ZoneOffset.UTC).minusDays(days).atStartOfDay(ZoneOffset.UTC).toEpochSecond();
-        String url = "https://finnhub.io/api/v1/stock/candles?symbol=" + code
+        String url = "https://finnhub.io/api/v1/stock/candle?symbol=" + code
                 + "&resolution=D&from=" + fromTs + "&to=" + toTs + "&token=" + key;
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(url))

@@ -76,7 +76,6 @@ public class PortfolioGUI {
                 });
                 return;
             }
-
             List<StockInfo> infos = new ArrayList<>();
             for (Holding h : holdings) {
                 try {
@@ -100,13 +99,17 @@ public class PortfolioGUI {
                     inv.setItem(i, buildHoldingItem(holdings.get(i), infos.get(i)));
                 }
 
-                // 底部行填充灰色玻璃板 + 右下角关闭按钮
+                // 底部行填充灰色玻璃板 + 右下角关闭按钮 + 左下角返回主菜单
                 for (int s = size - 9; s < size - 1; s++) {
                     inv.setItem(s, buildPane(Material.BLACK_STAINED_GLASS_PANE, Component.empty()));
                 }
                 ItemStack close = buildPane(Material.BARRIER,
                         Component.text("关闭").color(NamedTextColor.RED));
                 inv.setItem(size - 1, close);
+                // 返回统一主菜单，保持各 GUI 之间可以互相跳转。
+                ItemStack back = buildPane(Material.OAK_DOOR,
+                        Component.text("返回主菜单").color(NamedTextColor.YELLOW));
+                inv.setItem(size - 9, back);
 
                 VIEWERS.add(player.getUniqueId());
                 player.openInventory(inv);
