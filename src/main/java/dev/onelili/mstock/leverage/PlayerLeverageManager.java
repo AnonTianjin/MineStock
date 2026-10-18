@@ -32,6 +32,14 @@ public class PlayerLeverageManager {
     /** 股票杠杆。 */
     private final Map<UUID, Integer> stockCache = new ConcurrentHashMap<>();
 
+    /**
+     * 缓存哨兵：{@code 0} 表示「已查过库，该玩家未设置过杠杆」。
+     *
+     * <p>没有这个哨兵，从未设置过杠杆的玩家（最常见情形）每次读取都会在
+     * 调用线程上同步查库 —— 交易路径在主线程上调用，等于每笔交易卡一次 JDBC 往返。
+     */
+    private static final int DB_MISS = 0;
+
     public PlayerLeverageManager(TradingRepository repository, LeverageConfig config, Logger logger) {
         this.repository = repository;
         this.config = config;
@@ -43,26 +51,33 @@ public class PlayerLeverageManager {
     /** 当前生效的外汇杠杆：内存优先，缺省为 {@code forex.default-leverage}。 */
     public int getLeverage(UUID playerUuid) {
         Integer cached = forexCache.get(playerUuid);
-        if (cached != null) return config.clamp(cached);
-        Integer stored = loadFromDatabase(playerUuid);
-        if (stored != null) {
-            forexCache.put(playerUuid, stored);
-            return config.clamp(stored);
+        if (cached != null) {
+            return cached == DB_MISS ? config.getForexDefaultLeverage() : config.clamp(cached);
         }
-        return config.getForexDefaultLeverage();
+        Integer stored = loadFromDatabase(playerUuid);
+        // 查不到也要回填哨兵：只缓存「库里有值」的行，会让未设置过的玩家
+        // 每次读取都同步走一趟 JDBC（主线程交易路径）。
+        forexCache.put(playerUuid, stored != null && stored > 0 ? stored : DB_MISS);
+        return stored != null && stored > 0 ? config.clamp(stored) : config.getForexDefaultLeverage();
     }
 
     /**
      * 设置玩家外汇杠杆。
      *
      * <p>越界返回 {@code false} 且不做任何修改（不抛异常，由调用方决定提示文案）。
+     *
+     * <p><b>先落库、成功后再进缓存</b>：反过来（内存先行）一旦写库失败，
+     * 玩家被告知「设置失败」而本次会话却已生效，内存与 DB 分裂。
      */
     public boolean setLeverage(UUID playerUuid, int leverage) {
         if (!config.isValidLeverage(leverage)) return false;
-        forexCache.put(playerUuid, leverage);
-        if (repository == null) return true;
+        if (repository == null) {
+            forexCache.put(playerUuid, leverage);
+            return true;
+        }
         try {
             repository.saveLeverage(playerUuid, leverage);
+            forexCache.put(playerUuid, leverage);
             return true;
         } catch (SQLException e) {
             logger.warning("[MineStock] 保存玩家杠杆失败 " + playerUuid + ": " + e.getMessage());
@@ -83,13 +98,13 @@ public class PlayerLeverageManager {
     /** 当前生效的股票杠杆；未设置时为 {@link LeverageConfig#getStockDefaultLeverage}。 */
     public int getStockLeverage(UUID playerUuid) {
         Integer cached = stockCache.get(playerUuid);
-        if (cached != null) return config.clampStock(cached);
-        Integer stored = loadStockFromDatabase(playerUuid);
-        if (stored != null) {
-            stockCache.put(playerUuid, stored);
-            return config.clampStock(stored);
+        if (cached != null) {
+            return cached == DB_MISS ? config.getStockDefaultLeverage() : config.clampStock(cached);
         }
-        return config.getStockDefaultLeverage();
+        Integer stored = loadStockFromDatabase(playerUuid);
+        stockCache.put(playerUuid, stored != null && stored > 0 ? stored : DB_MISS);
+        return stored != null && stored > 0
+                ? config.clampStock(stored) : config.getStockDefaultLeverage();
     }
 
     /**
@@ -102,10 +117,14 @@ public class PlayerLeverageManager {
      */
     public boolean setStockLeverage(UUID playerUuid, int leverage) {
         if (!config.accepts(LeverageConfig.Policy.STOCK, leverage)) return false;
-        stockCache.put(playerUuid, leverage);
-        if (repository == null) return true;
+        if (repository == null) {
+            stockCache.put(playerUuid, leverage);
+            return true;
+        }
         try {
+            // 先落库、成功后再进缓存（与 setLeverage 同序），写库失败不留脏缓存。
             repository.saveStockLeverage(playerUuid, leverage);
+            stockCache.put(playerUuid, leverage);
             return true;
         } catch (SQLException e) {
             logger.warning("[MineStock] 保存股票杠杆失败 " + playerUuid + ": " + e.getMessage());
@@ -123,31 +142,52 @@ public class PlayerLeverageManager {
 
     // ── 生命周期 ──────────────────────────────────────────────────────────────
 
-    /** 登录时预加载两套杠杆，失败静默降级为内存默认值。 */
+    /** 登录时预加载两套杠杆：无论是否设置过都回填缓存（未设置过回填哨兵）。 */
     public void load(UUID playerUuid) {
         Integer forex = loadFromDatabase(playerUuid);
-        if (forex != null) forexCache.put(playerUuid, forex);
+        forexCache.put(playerUuid, forex != null && forex > 0 ? forex : DB_MISS);
         Integer stock = loadStockFromDatabase(playerUuid);
-        if (stock != null) stockCache.put(playerUuid, stock);
+        stockCache.put(playerUuid, stock != null && stock > 0 ? stock : DB_MISS);
     }
 
-    /** 退出时落库并释放内存。 */
+    /**
+     * 退出时落库并释放内存。
+     *
+     * <p><b>先写库、成功后再移除缓存</b>：反过来一旦写库失败，缓存已被清空，
+     * 本次设置永久丢失，重启后表现为「莫名回退」。写库失败时保留缓存，
+     * 关服 {@link #flushAll()} 还有一次兜底机会。
+     */
     public void saveAndEvict(UUID playerUuid) {
-        Integer forex = forexCache.remove(playerUuid);
-        Integer stock = stockCache.remove(playerUuid);
-        if (repository == null || (forex == null && stock == null)) return;
+        Integer forex = forexCache.get(playerUuid);
+        Integer stock = stockCache.get(playerUuid);
+        if (repository == null || (isUnset(forex) && isUnset(stock))) {
+            forexCache.remove(playerUuid);
+            stockCache.remove(playerUuid);
+            return;
+        }
+        boolean saved = true;
         try {
-            if (forex != null) repository.saveLeverage(playerUuid, forex);
-            if (stock != null) repository.saveStockLeverage(playerUuid, stock);
+            if (!isUnset(forex)) repository.saveLeverage(playerUuid, forex);
+            if (!isUnset(stock)) repository.saveStockLeverage(playerUuid, stock);
         } catch (SQLException e) {
+            saved = false;
             logger.warning("[MineStock] 退出时保存玩家杠杆失败 " + playerUuid + ": " + e.getMessage());
         }
+        if (saved) {
+            forexCache.remove(playerUuid);
+            stockCache.remove(playerUuid);
+        }
+    }
+
+    private static boolean isUnset(Integer value) {
+        return value == null || value == DB_MISS;
     }
 
     /** 关服前把内存中的杠杆全部落库。 */
     public void flushAll() {
         if (repository == null) return;
         for (Map.Entry<UUID, Integer> entry : forexCache.entrySet()) {
+            if (isUnset(entry.getValue())) continue; // 哨兵行没有可落库的设置
             try {
                 repository.saveLeverage(entry.getKey(), entry.getValue());
             } catch (SQLException e) {
@@ -156,6 +196,7 @@ public class PlayerLeverageManager {
             }
         }
         for (Map.Entry<UUID, Integer> entry : stockCache.entrySet()) {
+            if (isUnset(entry.getValue())) continue;
             try {
                 repository.saveStockLeverage(entry.getKey(), entry.getValue());
             } catch (SQLException e) {

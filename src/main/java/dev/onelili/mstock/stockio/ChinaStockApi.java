@@ -30,6 +30,27 @@ public class ChinaStockApi implements StockSource {
         return CHINA_CODE.matcher(code).matches();
     }
 
+    /**
+     * 按代码段映射交易所前缀（新浪 / 腾讯通用）。
+     *
+     * <p>只看首位字符会把 ETF / 科创 / B 股 / 北交所全部拼成无效代码
+     * （{@code 510300 → sz510300}），新浪返回空串，详情页、K 线、持仓估值稳定失败。
+     *
+     * <ul>
+     *   <li>{@code sh}：60 沪主板、68 科创板、51/56/58 场内基金（ETF/LOF）、90 沪 B 股</li>
+     *   <li>{@code sz}：00 深主板、30 创业板、12/15/16 深场内基金与债券</li>
+     *   <li>{@code bj}：4 / 8 开头的北交所与新三板</li>
+     * </ul>
+     */
+    private static String exchangePrefix(String code) {
+        if (code.startsWith("4") || code.startsWith("8")) return "bj";
+        String two = code.length() >= 2 ? code.substring(0, 2) : code;
+        return switch (two) {
+            case "60", "68", "51", "56", "58", "90" -> "sh";
+            default -> "sz";
+        };
+    }
+
     @Override
     public CompletableFuture<StockInfo> fetch(String code) {
         // 新浪财经，失败后备用腾讯财经
@@ -47,7 +68,7 @@ public class ChinaStockApi implements StockSource {
     }
 
     private CompletableFuture<StockInfo> fetchSina(String code) {
-        String prefix = code.startsWith("6") ? "sh" : "sz";
+        String prefix = exchangePrefix(code);
         String url = "https://hq.sinajs.cn/list=" + prefix + code;
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -70,15 +91,15 @@ public class ChinaStockApi implements StockSource {
         String[] fields = body.substring(start + 1, end).split(",");
         if (fields.length < 7) throw new RuntimeException("Sina fields too few: " + fields.length);
         String name = fields[0];
-        double prevClose = parseDouble(fields[2]);
-        double price = parseDouble(fields[3]);
+        double prevClose = parsePrice(fields[2]);
+        double price = parsePrice(fields[3]);
         double changeAmount = price - prevClose;
         double changePercent = prevClose != 0 ? changeAmount / prevClose * 100.0 : 0.0;
         return new StockInfo(code, name, price, changeAmount, changePercent);
     }
 
     private CompletableFuture<StockInfo> fetchTencent(String code) {
-        String prefix = code.startsWith("6") ? "sh" : "sz";
+        String prefix = exchangePrefix(code);
         String url = "https://qt.gtimg.cn/q=" + prefix + code;
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -100,8 +121,8 @@ public class ChinaStockApi implements StockSource {
         String[] fields = body.substring(start + 1, end).split("~");
         if (fields.length < 47) throw new RuntimeException("Tencent fields too few: " + fields.length);
         String name = fields[1];
-        double price = parseDouble(fields[3]);
-        double prevClose = parseDouble(fields[4]);
+        double price = parsePrice(fields[3]);
+        double prevClose = parsePrice(fields[4]);
         double changeAmount = parseDouble(fields[31]);
         double changePercent = parseDouble(fields[32]);
         return new StockInfo(code, name, price, changeAmount, changePercent);
@@ -111,9 +132,23 @@ public class ChinaStockApi implements StockSource {
         try { return Double.parseDouble(s.trim()); } catch (Exception e) { return 0.0; }
     }
 
+    /**
+     * 严格解析价格 / 昨收字段：失败或非正数一律抛出，走备用源 / 整次失败。
+     *
+     * <p>宽松解析会把停牌股、空响应当成「成功且价格 0」，涨跌幅变
+     * {@code -100%} 并写入报价缓存，污染详情页、持仓页、告示牌与推荐排序。
+     */
+    private double parsePrice(String s) {
+        double value = parseDouble(s);
+        if (!(value > 0) || !Double.isFinite(value)) {
+            throw new RuntimeException("Invalid price field: \"" + s + "\"");
+        }
+        return value;
+    }
+
     @Override
     public CompletableFuture<List<KLinePoint>> fetchKLine(String code, int days) {
-        String prefix = code.startsWith("6") ? "sh" : "sz";
+        String prefix = exchangePrefix(code);
         String url = "https://money.finance.sina.com.cn/quotes_service/api/json_v2.php"
                 + "/CN_MarketData.getKLineData?symbol=" + prefix + code
                 + "&scale=240&datalen=" + days + "&ma=no";

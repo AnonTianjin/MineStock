@@ -10,6 +10,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
@@ -60,6 +61,27 @@ public class PortfolioGUIListener implements Listener {
 
         player.closeInventory();
         player.performCommand("mstock " + stockCode);
+    }
+
+    /**
+     * 旧版持仓界面由 {@code Bukkit.createInventory(null, ...)} 创建（无 GuiHolder），
+     * {@code TradingGuiListener.onDrag} 覆盖不到它 —— 不拦截的话玩家可把随身物品
+     * 拖进界面格子，而这里的点击已被全量取消，物品再也拿不回来（重绘 / 关闭即消失）。
+     *
+     * <p>只拦拖进<b>界面格子</b>的部分：玩家开着界面时在自己背包内拖动物品仍被允许。
+     */
+    @EventHandler(priority = EventPriority.NORMAL)
+    public void onInventoryDrag(InventoryDragEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+        if (!PortfolioGUI.isViewer(player.getUniqueId())) return;
+
+        Component viewTitle = event.getView().title();
+        String titlePlain = PlainTextComponentSerializer.plainText().serialize(viewTitle);
+        if (!titlePlain.startsWith(PortfolioGUI.GUI_TITLE_PREFIX)) return;
+
+        int topSize = event.getInventory().getSize();
+        boolean touchesGui = event.getRawSlots().stream().anyMatch(slot -> slot < topSize);
+        if (touchesGui) event.setCancelled(true);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

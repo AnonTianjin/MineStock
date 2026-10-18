@@ -66,12 +66,12 @@ class LeverageEffectTest {
         double liq10 = ENGINE.liquidationPrice(PRICE, 10, dev.onelili.mstock.model.TradeDirection.LONG);
         double liq100 = ENGINE.liquidationPrice(PRICE, 100, dev.onelili.mstock.model.TradeDirection.LONG);
 
-        // 1x 几乎不会强平（只剩维持保证金）
-        assertEquals(PRICE * 0.005, liq1, 1e-9);
-        // 10x: 100 * (1 - 0.1 + 0.005) = 90.5
-        assertEquals(90.5, liq10, 1e-9);
-        // 100x: 100 * (1 - 0.01 + 0.005) = 99.5
-        assertEquals(99.5, liq100, 1e-9);
+        // 1x: 100 * (1 - 0.9 / 1) = 10.0，跌 90% 才强平
+        assertEquals(PRICE * (1 - 0.9 / 1), liq1, 1e-9);
+        // 10x: 100 * (1 - 0.9 / 10) = 91.0
+        assertEquals(91.0, liq10, 1e-9);
+        // 100x: 100 * (1 - 0.9 / 100) = 99.1
+        assertEquals(99.1, liq100, 1e-9);
 
         // 杠杆越高，强平价越靠近入场价
         assertTrue(liq100 > liq10 && liq10 > liq1,
@@ -134,8 +134,8 @@ class LeverageEffectTest {
         double liq100 = ENGINE.liquidationPrice(PRICE, 100, dev.onelili.mstock.model.TradeDirection.SHORT);
 
         assertTrue(liq10 > PRICE, "空头强平价应在入场价上方");
-        assertEquals(109.5, liq10, 1e-9);
-        assertEquals(100.5, liq100, 1e-9);
+        assertEquals(109.0, liq10, 1e-9);
+        assertEquals(100.9, liq100, 1e-9);
         assertTrue(liq100 < liq10, "空头杠杆越高，强平价越靠近入场价");
     }
 

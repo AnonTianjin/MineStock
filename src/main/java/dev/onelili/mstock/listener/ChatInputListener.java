@@ -35,6 +35,11 @@ public class ChatInputListener implements Listener {
         PendingAction action = session.getSession(player.getUniqueId());
         if (action == null) return;
 
+        // 已进入确认页（数量已输入）：放行聊天、不再吞消息。
+        // 确认只靠点击 [确认] / [取消] 按钮 —— 此时继续拦截公屏发言，
+        // 玩家打的数字还会静默重写确认页金额。
+        if (action.isAwaitingConfirm()) return;
+
         event.setCancelled(true);
         // AsyncChatEvent carries a Component; extract plain text for parsing
         String input = PlainTextComponentSerializer.plainText().serialize(event.message()).trim();

@@ -139,11 +139,17 @@ public class HkStockApi implements StockSource {
     static List<KLinePoint> parseTencentKLine(String body, String symbol) {
         List<KLinePoint> result = new ArrayList<>();
         JsonObject root = JsonParser.parseString(body).getAsJsonObject();
-        if (root.get("code").getAsInt() != 0) {
-            throw new RuntimeException("Tencent HK KLine error: " + root.get("msg").getAsString());
+        // 逐级判空：错误响应可能缺 code / msg / data 任一字段，
+        // 裸 get(...).getAsInt() 会 NPE，把一次普通的行情失败变成解析异常。
+        JsonElement codeField = root.get("code");
+        if (codeField == null || codeField.getAsInt() != 0) {
+            JsonElement msg = root.get("msg");
+            throw new RuntimeException("Tencent HK KLine error: "
+                    + (msg != null && !msg.isJsonNull() ? msg.getAsString() : body));
         }
 
-        JsonObject stockData = root.getAsJsonObject("data").getAsJsonObject(symbol);
+        JsonObject data = root.getAsJsonObject("data");
+        JsonObject stockData = data == null ? null : data.getAsJsonObject(symbol);
         if (stockData == null) {
             throw new RuntimeException("Tencent HK KLine missing symbol: " + symbol);
         }

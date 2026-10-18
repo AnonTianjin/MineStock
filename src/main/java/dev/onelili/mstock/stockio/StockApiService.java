@@ -43,6 +43,10 @@ public class StockApiService implements AutoCloseable {
     private static final int PRICE_CACHE_SWEEP_AT = 128;
     private static final int PRICE_CACHE_HARD_CAP = 1024;
 
+    /** K 线缓存条目上限；与报价缓存同一策略（见 {@link #cacheKLine}）。 */
+    private static final int KLINE_CACHE_SWEEP_AT = 128;
+    private static final int KLINE_CACHE_HARD_CAP = 1024;
+
     /**
      * @param leadingSources 插到 {@code sources} 最前面的数据源（可变参数，可为空）。
      *                       {@code StockApiService} 的遍历语义是"首个 {@code supports} 者胜出"，
@@ -134,6 +138,27 @@ public class StockApiService implements AutoCloseable {
         priceCache.put(code, new PriceCacheEntry(info));
     }
 
+    /**
+     * 写入 K 线缓存；映射过大时先清过期项，仍超硬上限就放弃本次缓存
+     * （宁可不缓存也不无界增长）。
+     *
+     * <p>K 线缓存键含周期与根数（{@code code:interval:limit}），组合数远多于报价缓存，
+     * 不设上限的话玩家每翻一页图表就多几个常驻条目。清扫阈值用基准 TTL
+     * （{@link #klineCacheMs}）：短周期条目本就更快过期，只是晚一点被回收，无碍正确性。
+     */
+    private void cacheKLine(String cacheKey, List<KLinePoint> data) {
+        if (data == null || cacheKey == null) {
+            return;
+        }
+        if (klineCache.size() >= KLINE_CACHE_SWEEP_AT) {
+            klineCache.entrySet().removeIf(e -> e.getValue().isExpired(klineCacheMs));
+            if (klineCache.size() >= KLINE_CACHE_HARD_CAP) {
+                return;
+            }
+        }
+        klineCache.put(cacheKey, new KLineCacheEntry(data));
+    }
+
     public CompletableFuture<List<KLinePoint>> fetchKLine(String code, int days) {
         if (closed.get()) return closedFuture();
         String cacheKey = code + ":" + days;
@@ -144,7 +169,7 @@ public class StockApiService implements AutoCloseable {
         for (StockSource source : sources) {
             if (source.supports(code)) {
                 return track(() -> source.fetchKLine(code, days).thenApply(data -> {
-                    klineCache.put(cacheKey, new KLineCacheEntry(data));
+                    cacheKLine(cacheKey, data);
                     return data;
                 }));
             }
@@ -176,7 +201,7 @@ public class StockApiService implements AutoCloseable {
         for (StockSource source : sources) {
             if (source.supports(code)) {
                 return track(() -> source.fetchKLine(code, tf, limit).thenApply(data -> {
-                    klineCache.put(cacheKey, new KLineCacheEntry(data));
+                    cacheKLine(cacheKey, data);
                     return data;
                 }));
             }

@@ -12,6 +12,7 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Logger;
 
@@ -133,7 +134,7 @@ class TradingRepositoryTest {
     void updatesMarginUnrealizedPnl() throws SQLException {
         long id = repository.insertMarginPosition(margin(1.10, 1000, 10, 110.0));
 
-        repository.updateMarginUnrealized(id, -42.5);
+        repository.updateMarginUnrealizedBatch(Map.of(id, -42.5));
 
         assertEquals(-42.5, repository.findMarginPosition(playerUuid, id)
                 .getUnrealizedPnl(), 1e-9);

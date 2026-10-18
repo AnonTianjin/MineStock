@@ -596,9 +596,13 @@ public final class SimulationService {
     }
 
     /**
-     * 卖出：先平杠杆部分（{@code LeverageService.closeQuantity} 内部自行结算入账），
+     * 卖出：先合计「杠杆多头 + 现金」总可卖量，不足则<b>整笔拒绝</b>；
+     * 通过后先平杠杆部分（{@code LeverageService.closeQuantity} 内部自行结算入账），
      * 余量走 {@code reduceHoldingSell}，<b>先写库成功再入账</b>
      * （{@code payout} 带 1 次重试 + severe 日志），与 {@code LeverageService.settleClose} 同序。
+     *
+     * <p>整笔拒绝是必须的：先平杠杆、再对现金部分报「持仓不足」，玩家会以为
+     * 整笔失败而重试，实际杠杆部分已经成交入账。
      */
     public CompletableFuture<TradeOutcome> sell(UUID playerUuid, String code, int quantity) {
         TradeGate gate = tradeGate(code, quantity);
@@ -608,14 +612,49 @@ public final class SimulationService {
         SimulationStock stock = gate.stock();
         return tradePrice(stock).thenCompose(price -> {
             if (price == null) return fail("trade-no-price");
-            return closeLeveraged(playerUuid, stock.getCode(), quantity)
-                    .thenCompose(closed -> sellCash(playerUuid, stock, quantity, price, closed));
+            return supplyAsync(() -> combinedQuantity(playerUuid, stock.getCode()))
+                    .thenCompose(total -> {
+                        if (total < quantity - 1e-9) {
+                            return total <= 1e-9
+                                    ? fail("simulation-no-holding",
+                                            "code", stock.getCode(), "hold", "0",
+                                            "amount", String.valueOf(quantity))
+                                    : fail("simulation-not-enough-holding",
+                                            "code", stock.getCode(),
+                                            "hold", formatQuantity(total),
+                                            "amount", String.valueOf(quantity));
+                        }
+                        return closeLeveraged(playerUuid, stock.getCode(), quantity)
+                                .thenCompose(closed ->
+                                        sellCash(playerUuid, stock, quantity, price, closed));
+                    });
         });
+    }
+
+    /** 「杠杆多头 + 现金持仓」合计可卖数量（quantityOf / holdingAmount 读库失败都按 0 计）。 */
+    private double combinedQuantity(UUID playerUuid, String code) {
+        LeverageService leverageService = plugin == null ? null : plugin.getLeverageService();
+        double leveraged = leverageService == null ? 0.0
+                : leverageService.quantityOf(playerUuid, MarketType.SIMULATION, code,
+                        TradeDirection.LONG);
+        return leveraged + holdingAmount(playerUuid, code);
+    }
+
+    /** 数量展示：去掉无意义的尾随零（7.0 → "7"，7.5 → "7.5"）。 */
+    private static String formatQuantity(double value) {
+        if (!Double.isFinite(value) || value <= 0) return "0";
+        double rounded = Math.round(value * 1_000_000.0) / 1_000_000.0;
+        if (rounded == Math.floor(rounded)) return String.valueOf((long) rounded);
+        return String.valueOf(rounded);
     }
 
     /**
      * 一次性卖出该标的的全部<b>现金</b>持仓 —— 供持仓操作菜单的"卖出"按钮使用
      * （界面里没有数量输入框，卖光是最符合直觉的语义）。
+     *
+     * <p><b>只动现金仓、不碰杠杆仓</b>：杠杆仓位归「平仓 / 回补」入口管。
+     * 之前这里把数量交给 {@link #sell}（先平杠杆、余量卖现金），玩家同时持有
+     * 杠杆仓时会被整笔平掉而现金仓一股未动，还回「卖出成功」。
      *
      * <p>没有持仓时明确报 {@code simulation-no-holding}，绝不用
      * {@code Integer.MAX_VALUE} 之类的哨兵数量去碰运气：那样一旦杠杆通道回填
@@ -627,11 +666,27 @@ public final class SimulationService {
             return fail("simulation-no-holding",
                     "code", String.valueOf(code), "hold", "0", "amount", "0");
         }
+        SimulationStock stock = registry.find(normalized).orElse(null);
+        if (stock == null) {
+            return fail("simulation-unknown-code", "code", displayCode(normalized));
+        }
+        if (!isEnabled()) {
+            return fail("simulation-disabled");
+        }
+        if (!stock.isTradable() || stock.isSuspended()) {
+            return fail("simulation-suspended", "code", stock.getCode());
+        }
         return supplyAsync(() -> holdingAmount(playerUuid, normalized))
-                .thenCompose(held -> held <= 0
-                        ? fail("simulation-no-holding",
-                                "code", normalized, "hold", "0", "amount", "0")
-                        : sell(playerUuid, normalized, held));
+                .thenCompose(held -> {
+                    if (held <= 0) {
+                        return fail("simulation-no-holding",
+                                "code", normalized, "hold", "0", "amount", "0");
+                    }
+                    return tradePrice(stock).thenCompose(price -> {
+                        if (price == null) return fail("trade-no-price");
+                        return sellCash(playerUuid, stock, held, price, zeroClose());
+                    });
+                });
     }
 
     /**

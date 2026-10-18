@@ -293,13 +293,37 @@ public class TradingRepository {
         }
     }
 
-    public void updateMarginUnrealized(long id, double unrealizedPnl) throws SQLException {
+    /**
+     * 批量更新未实现盈亏（强平巡检收尾用）。
+     *
+     * <p>单连接单事务一次提交：巡检每轮对所有仓位都要回写估值，
+     * 逐行借还连接 + 逐行提交会与交易请求争抢只有 2 个连接的池
+     * （1000 个仓位 = 1000 次提交）。已消失的 id（本轮被强平）更新为空操作。
+     */
+    public void updateMarginUnrealizedBatch(Map<Long, Double> pnlById) throws SQLException {
+        if (pnlById.isEmpty()) return;
         String sql = "UPDATE margin_positions SET unrealized_pnl = ? WHERE id = ?";
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setDouble(1, unrealizedPnl);
-            ps.setLong(2, id);
-            ps.executeUpdate();
+        try (Connection conn = db.getConnection()) {
+            boolean oldAutoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                for (Map.Entry<Long, Double> entry : pnlById.entrySet()) {
+                    ps.setDouble(1, entry.getValue());
+                    ps.setLong(2, entry.getKey());
+                    ps.addBatch();
+                }
+                ps.executeBatch();
+                conn.commit();
+            } catch (SQLException e) {
+                try {
+                    conn.rollback();
+                } catch (SQLException suppressed) {
+                    e.addSuppressed(suppressed);
+                }
+                throw e;
+            } finally {
+                conn.setAutoCommit(oldAutoCommit);
+            }
         }
     }
 
@@ -329,26 +353,35 @@ public class TradingRepository {
     }
 
     /**
-     * 部分平仓后的仓位收缩：数量与保证金同比例减少。
+     * 部分平仓后的仓位收缩：按<b>本次平仓量</b>原子扣减数量与保证金。
      *
      * <p>强平价与杠杆<b>不变</b> —— 它们由开仓时的入场价与杠杆决定，
      * 减仓不改变这两个量。
      *
-     * @return {@code false} 表示该行不存在（已被并发平掉）
+     * <p>写法是 {@code quantity = quantity - ?} 加 {@code AND quantity >= ?} 闸门，
+     * 而不是把调用方算好的绝对值写回：两个并发部分平仓各带走自己那份，
+     * 谁也覆盖不了谁（全平的 {@link #deleteMarginPosition} 幂等闸门的对应实现）。
+     *
+     * @param closeQuantity  本次平掉的数量（必须 &gt; 0）
+     * @param releasedMargin 本次释放的保证金
+     * @param unrealizedPnl  写回的未实现盈亏快照（巡检会定期重算，仅展示用）
+     * @return {@code false} 表示该行不存在、已被并发整平，或剩余数量不足以扣减
+     *         本次数量（同样是被并发平掉的表现）。调用方必须跳过该仓位且<b>不入账</b>。
      */
-    public boolean reduceMarginPosition(long id, double quantity, double margin,
+    public boolean reduceMarginPosition(long id, double closeQuantity, double releasedMargin,
                                         double unrealizedPnl) throws SQLException {
         String sql = """
                 UPDATE margin_positions
-                SET quantity = ?, margin = ?, unrealized_pnl = ?
-                WHERE id = ?
+                SET quantity = quantity - ?, margin = margin - ?, unrealized_pnl = ?
+                WHERE id = ? AND quantity >= ?
                 """;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setDouble(1, quantity);
-            ps.setDouble(2, margin);
+            ps.setDouble(1, closeQuantity);
+            ps.setDouble(2, releasedMargin);
             ps.setDouble(3, unrealizedPnl);
             ps.setLong(4, id);
+            ps.setDouble(5, closeQuantity);
             return ps.executeUpdate() > 0;
         }
     }

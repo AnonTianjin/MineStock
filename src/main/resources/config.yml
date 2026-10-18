@@ -63,7 +63,7 @@ leverage:
   margin-call-threshold: 0.5
   # 保证金率降到该比例时强制平仓
   liquidation-threshold: 0.1
-  # 维持保证金率，用于精确定价强平价
+  # 维持保证金率（保留兼容的旧配置项；当前强平价由 liquidation-threshold 推导，本键不再参与计算）
   maintenance-margin-rate: 0.005
   # 强平巡检周期（秒）
   liquidation-sweep-seconds: 30

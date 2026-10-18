@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -352,6 +353,7 @@ public class LeverageService {
         }
         int liquidated = 0;
         long now = System.currentTimeMillis();
+        Map<Long, Double> pendingPnl = new LinkedHashMap<>();
         for (MarginPosition position : positions) {
             // 停牌：价格已冻结，跳过估值与强平，避免用冻结价把玩家强平（插桩点必须在 fetchPrice 之前）。
             if (prices != null && !prices.tradable(position.getMarket(), position.getSymbol())) {
@@ -361,12 +363,7 @@ public class LeverageService {
             if (price == null) continue;
 
             double pnl = round2(engine.unrealizedPnl(position, price));
-            try {
-                repository.updateMarginUnrealized(position.getId(), pnl);
-            } catch (SQLException e) {
-                logger.warning("[MineStock] 更新未实现盈亏失败 #" + position.getId()
-                        + ": " + e.getMessage());
-            }
+            pendingPnl.put(position.getId(), pnl);
             position.setUnrealizedPnl(pnl);
 
             if (!engine.shouldLiquidate(position, price)) {
@@ -389,6 +386,16 @@ public class LeverageService {
                 liquidated++;
                 marginCallNotifiedAt.remove(position.getId());
                 if (onLiquidated != null) onLiquidated.accept(position, outcome);
+            }
+        }
+
+        // 盈亏落库收尾一次性批量提交：单连接单事务，不再逐行借还连接、逐行提交。
+        // 本轮被强平的仓位其行已被删除，批量更新对它们是空操作。
+        if (!pendingPnl.isEmpty()) {
+            try {
+                repository.updateMarginUnrealizedBatch(pendingPnl);
+            } catch (SQLException e) {
+                logger.warning("[MineStock] 批量更新未实现盈亏失败: " + e.getMessage());
             }
         }
         return liquidated;
@@ -590,9 +597,12 @@ public class LeverageService {
                         }
                         closedIds.add(position.getId());
                     } else {
+                        // 原子扣减：传「本次平仓量」而非算好的剩余值。
+                        // 返回 false 说明该仓位已被并发平掉（数量不足扣减或行已消失），
+                        // 必须跳过且不入账，否则同一份保证金会被两个任务各领一次。
                         if (!repository.reduceMarginPosition(position.getId(),
-                                round2(settlement.remainingQuantity()),
-                                round2(settlement.remainingMargin()),
+                                closeQty,
+                                closedMargin,
                                 position.getUnrealizedPnl())) {
                             continue;
                         }

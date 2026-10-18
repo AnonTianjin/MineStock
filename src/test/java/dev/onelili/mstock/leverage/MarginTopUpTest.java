@@ -31,7 +31,7 @@ class MarginTopUpTest {
 
     private static final LeverageEngine engine = new LeverageEngine(config());
 
-    /** 10x 多头：100 股 @10，保证金 100，强平价 9.05。 */
+    /** 10x 多头：100 股 @10，保证金 100，强平价 9.1。 */
     private static MarginPosition longPosition() {
         return new MarginPosition(1L, UUID.randomUUID(), MarketType.EQUITY, "600519",
                 TradeDirection.LONG, 100, 10.0, 10, 100.0,
@@ -102,8 +102,8 @@ class MarginTopUpTest {
         // 多头强平价被推得更低（离现价更远），风险变小
         assertTrue(liqAfter < liqBefore,
                 "补交后强平价应更低（更难触发强平）：" + liqBefore + " → " + liqAfter);
-        // 10x → 强平价 9.05；4x → 1 - 0.25 + 0.005 = 0.755 → 7.55
-        assertEquals(10.0 * (1 - 0.25 + 0.005), liqAfter, EPS);
+        // 10x → 强平价 9.1；4x → 1 - (1 - 0.1) / 4 = 0.775 → 7.75
+        assertEquals(10.0 * (1 - 0.9 / 4), liqAfter, EPS);
     }
 
     @Test
@@ -114,9 +114,9 @@ class MarginTopUpTest {
         int leverage = engine.leverageAfterTopUp(position, 2000.0);
         assertEquals(1, leverage);
 
-        // 杠杆 1 的强平价 = entry * (1 - 1 + 0.005) = entry * 0.005，几乎不可能触发
+        // 杠杆 1 的强平价 = entry * (1 - (1 - 0.1)) = entry * 0.1，跌 90% 才触发
         double liq = engine.liquidationPriceAfterTopUp(position, 2000.0);
-        assertEquals(10.0 * 0.005, liq, EPS);
+        assertEquals(10.0 * (1 - 0.9), liq, EPS);
     }
 
     @Test

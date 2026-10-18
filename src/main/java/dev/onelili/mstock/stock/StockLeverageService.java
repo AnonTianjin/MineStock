@@ -164,6 +164,19 @@ public class StockLeverageService {
         return closeDirection(playerUuid, code, quantity, TradeDirection.SHORT);
     }
 
+    /**
+     * 该玩家在某只股票上的杠杆<b>多头</b>持仓数量合计（同步读库）。
+     *
+     * <p>供卖出前「杠杆 + 现金」合计校验使用；读库失败按 0 处理
+     * （{@link LeverageService#quantityOf} 内部已吞掉异常并记日志）。
+     */
+    public double leveragedQuantity(java.util.UUID playerUuid, String code) {
+        String normalized = normalize(code);
+        if (normalized == null) return 0.0;
+        return leverageService.quantityOf(playerUuid, MarketType.EQUITY, normalized,
+                TradeDirection.LONG);
+    }
+
     private CompletableFuture<LeverageService.PartialClose> closeDirection(
             java.util.UUID playerUuid, String code, double quantity, TradeDirection direction) {
         if (!(quantity > 0) || !Double.isFinite(quantity)) {

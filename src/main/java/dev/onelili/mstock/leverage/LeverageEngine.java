@@ -16,11 +16,11 @@ import java.util.UUID;
  * （若改用"权益 / 名义价值"，默认 {@code leverage=10} 开仓即为 {@code 0.1}，
  * 会立刻触发强平，需求给出的默认值将自相矛盾。）
  *
- * <p><b>强平价</b>：把维持保证金率纳入定价，使价格触及强平价时保证金率恰好等于
- * {@code liquidationThreshold}：
+ * <p><b>强平价</b>：与 {@link #shouldLiquidate} 完全同口径 —— 价格触及强平价时
+ * 保证金率恰好等于 {@code liquidationThreshold}：
  * <pre>
- *   多头: price = entry * (1 - 1/leverage + maintenanceMarginRate)
- *   空头: price = entry * (1 + 1/leverage - maintenanceMarginRate)
+ *   多头: price = entry * (1 - (1 - liquidationThreshold) / leverage)
+ *   空头: price = entry * (1 + (1 - liquidationThreshold) / leverage)
  * </pre>
  *
  * <p>本类不依赖任何 Bukkit 运行时，便于单元测试。
@@ -109,15 +109,17 @@ public class LeverageEngine {
     /**
      * 强平价。多头在下方，空头在上方。
      *
+     * <p>价格触及该价时 {@link #marginRatio} 恰好等于 {@code liquidationThreshold}，
+     * 与 {@link #shouldLiquidate} 完全一致（GUI 显示的强平价即真实触发点）。
+     *
      * <p>使用该仓位<b>开仓时</b>记录的 {@code leverage}，与玩家当前杠杆无关。
      */
     public double liquidationPrice(double entryPrice, int leverage, TradeDirection direction) {
         if (entryPrice <= 0) return 0.0;
         int effective = Math.max(1, leverage);
-        double initialMarginRate = 1.0 / effective;
-        double maintenance = config.getMaintenanceMarginRate();
+        double threshold = config.getLiquidationThreshold();
         int sign = direction.sign();
-        double factor = 1.0 - sign * initialMarginRate + sign * maintenance;
+        double factor = 1.0 - sign * (1.0 - threshold) / effective;
         return Math.max(0.0, entryPrice * factor);
     }
 
@@ -230,9 +232,5 @@ public class LeverageEngine {
 
     public double getLiquidationThreshold() {
         return config.getLiquidationThreshold();
-    }
-
-    public double getMaintenanceMarginRate() {
-        return config.getMaintenanceMarginRate();
     }
 }

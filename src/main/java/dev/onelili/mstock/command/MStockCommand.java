@@ -1627,6 +1627,10 @@ public class MStockCommand implements CommandExecutor, TabCompleter {
                                 && action.isAwaitingConfirm()) {
                             session.clearSession(player.getUniqueId());
                             executeBuy(player, args[1].toUpperCase(), amount);
+                        } else if (action == null) {
+                            // 会话有 TTL：过期后点确认之前会落进空分支，
+                            // 没有任何反馈，玩家以为点了没生效反复点。
+                            lang.send(player, "input-expired");
                         }
                     } catch (NumberFormatException ignored) { }
                 }
@@ -1642,6 +1646,8 @@ public class MStockCommand implements CommandExecutor, TabCompleter {
                                 && action.isAwaitingConfirm()) {
                             session.clearSession(player.getUniqueId());
                             executeSell(player, args[1].toUpperCase(), amount);
+                        } else if (action == null) {
+                            lang.send(player, "input-expired");
                         }
                     } catch (NumberFormatException ignored) { }
                 }
@@ -1794,11 +1800,18 @@ public class MStockCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
-    /** 玩家退出时清理。 */
+    /**
+     * 玩家退出时清理。
+     *
+     * <p>四张按 UUID 的 Map 的值都直接或间接强引用 {@code Player} / {@code Inventory}
+     * （回调 lambda 捕获 GUI 句柄），不清理会让已退出玩家无法 GC、Map 随历史玩家数单调增长。
+     */
     public void clearPlayerState(UUID playerUuid) {
         quantityCallbacks.remove(playerUuid);
         symbolSearchCallbacks.remove(playerUuid);
         cooldowns.remove(playerUuid);
+        chartReturnCommands.remove(playerUuid);
+        chartReturnLabels.remove(playerUuid);
     }
 
     private void showRecommendations(Player player) {
@@ -2317,13 +2330,27 @@ public class MStockCommand implements CommandExecutor, TabCompleter {
         // 没有杠杆仓位时这一步是零成本查询，不影响原现金卖出路径。
         var stockService = plugin.getStockLeverageService();
         if (stockService != null) {
-            stockService.closeLeveraged(player.getUniqueId(), code, amount)
-                    .thenCompose(closed -> {
-                        int remaining = amount - (int) Math.floor(closed.closedQuantity() + 1e-9);
-                        if (remaining > 0) {
-                            cashSell(player, code, remaining);
+            LifecycleTaskManager tasks = plugin.getTaskManager();
+            if (tasks == null) return;
+            // 先合计「杠杆 + 现金」总可卖量，不足则整笔拒绝：
+            // 绝不先平杠杆、再对现金部分报「持仓不足」——那会让玩家以为
+            // 整笔失败而重试，实际杠杆部分已经成交入账。
+            tasks.supplyAsync(() -> combinedSellable(player.getUniqueId(), code))
+                    .thenCompose(total -> {
+                        if (total != null && total < amount - 1e-9) {
+                            runOnPlayer(player, () -> lang.send(player, "not-enough-holding",
+                                    "hold", formatQuantity(total),
+                                    "amount", String.valueOf(amount)));
+                            return CompletableFuture.completedFuture(null);
                         }
-                        return CompletableFuture.completedFuture(null);
+                        return stockService.closeLeveraged(player.getUniqueId(), code, amount)
+                                .thenCompose(closed -> {
+                                    int remaining = amount - (int) Math.floor(closed.closedQuantity() + 1e-9);
+                                    if (remaining > 0) {
+                                        cashSell(player, code, remaining);
+                                    }
+                                    return CompletableFuture.completedFuture(null);
+                                });
                     })
                     .exceptionally(error -> {
                         plugin.getLogger().warning("平仓杠杆股票失败: " + error.getMessage());
@@ -2334,6 +2361,34 @@ public class MStockCommand implements CommandExecutor, TabCompleter {
         }
 
         cashSell(player, code, amount);
+    }
+
+    /**
+     * 「杠杆多头 + 现金持仓」合计可卖数量。
+     *
+     * @return {@code null} 表示读库失败、无法校验 —— 此时放行，由下游
+     *         {@code cashSell} 的真实校验兜底，绝不因读库错误挡住卖出。
+     */
+    private Double combinedSellable(java.util.UUID playerUuid, String code) {
+        var stockService = plugin.getStockLeverageService();
+        if (stockService == null) return null;
+        double leveraged = stockService.leveragedQuantity(playerUuid, code);
+        int cash;
+        try {
+            Holding holding = holdingRepo.findByPlayerAndCode(playerUuid, code);
+            cash = holding == null ? 0 : holding.getAmount();
+        } catch (SQLException e) {
+            return null;
+        }
+        return leveraged + cash;
+    }
+
+    /** 数量展示：去掉无意义的尾随零（7.0 → "7"，7.5 → "7.5"）。 */
+    private static String formatQuantity(double value) {
+        if (!Double.isFinite(value) || value <= 0) return "0";
+        double rounded = Math.round(value * 1_000_000.0) / 1_000_000.0;
+        if (rounded == Math.floor(rounded)) return String.valueOf((long) rounded);
+        return String.valueOf(rounded);
     }
 
     /**

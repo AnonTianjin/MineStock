@@ -192,7 +192,9 @@ public class UsStockApi implements StockSource {
         double[] l = extractDoubleArray(body, "l");
         double[] o = extractDoubleArray(body, "o");
         long[]   t = extractLongArray(body, "t");
-        int len = c.length;
+        // Finnhub 各数组可能长度不齐（缺字段或截断），按四条价格数组的最短者循环，
+        // 只对 t 单独兜底 —— 直接用 c.length 循环会 ArrayIndexOutOfBoundsException。
+        int len = Math.min(Math.min(c.length, h.length), Math.min(l.length, o.length));
         if (len == 0) throw new RuntimeException("Finnhub KLine empty arrays");
         List<KLinePoint> result = new ArrayList<>(len);
         for (int i = 0; i < len; i++) {

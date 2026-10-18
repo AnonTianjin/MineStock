@@ -428,6 +428,30 @@ public final class MineStock extends JavaPlugin {
     }
 
     /**
+     * 重载后对齐强平巡检与期货盯市任务：先取消旧任务，再按新配置重建。
+     *
+     * <p>这两个任务只在 {@code onEnable} 注册的话，改
+     * {@code leverage.liquidation-sweep-seconds} / {@code futures.settle-check-seconds}
+     * 不生效；{@code futures.enabled} 由 false 改 true 永远没有盯市任务
+     * （持仓永不结算），由 true 改 false 盯市仍在运行。与
+     * {@link #reconcileSimulationTask()} 不同，巡检 / 盯市无推进状态，
+     * 直接先 cancel 再重建即可，不必区分"配置未变"。
+     */
+    private void reconcileTradingTasks() {
+        CompatScheduler.ScheduledTaskHandle runningLiquidation = liquidationTask;
+        liquidationTask = null;
+        if (runningLiquidation != null) {
+            cleanup("停止强平巡检", runningLiquidation::cancel);
+        }
+        CompatScheduler.ScheduledTaskHandle runningSettle = futuresSettleTask;
+        futuresSettleTask = null;
+        if (runningSettle != null) {
+            cleanup("停止期货盯市", runningSettle::cancel);
+        }
+        startTradingTasks();
+    }
+
+    /**
      * {@code reload()} 收尾：让模拟盘推进任务与最新的 {@code simulation.enabled} 对齐。
      *
      * <p>幂等 —— 配置没改时判定结果是 {@code NONE}，不会重启定时器、不会打断内存价格路径。
@@ -734,6 +758,8 @@ public final class MineStock extends JavaPlugin {
             // "启动时开、重载时关" 会继续跑，"启动时关、重载时开" 要等重启才可用。
             reconcileSimulationTask();
         }
+        // 强平巡检与期货盯市同理：按新配置重建（含 futures.enabled 开关切换）。
+        reconcileTradingTasks();
         if (commandExecutor != null) {
             commandExecutor.refresh(newApi, newRecommendations, newConfig, newLang);
         }

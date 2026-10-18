@@ -120,6 +120,12 @@ public class FuturesService {
 
     public CompletableFuture<TradeOutcome> open(UUID playerUuid, String symbol,
                                                 TradeDirection direction, double quantity) {
+        // 开关必须在开仓入口拦住：startTradingTasks 只在 enabled 时注册盯市任务，
+        // 这里再放行就会造出「扣了保证金却永远没人盯市/平仓」的锁死仓位。
+        // 指令与 GUI 都汇入本方法，守卫放这一处即可覆盖全部开仓路径。
+        if (!config.isFuturesEnabled()) {
+            return CompletableFuture.completedFuture(TradeOutcome.fail("futures-disabled"));
+        }
         if (direction == null) {
             return CompletableFuture.completedFuture(TradeOutcome.fail("trade-invalid-direction"));
         }

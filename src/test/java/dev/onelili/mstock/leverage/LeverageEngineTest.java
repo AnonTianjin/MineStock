@@ -117,7 +117,6 @@ class LeverageEngineTest {
         LeverageEngine engine = new LeverageEngine(config());
         double entry = 100.0;
         int leverage = 10;
-        double maintenance = 0.005;
 
         double longLiq = engine.liquidationPrice(entry, leverage, TradeDirection.LONG);
         double shortLiq = engine.liquidationPrice(entry, leverage, TradeDirection.SHORT);
@@ -126,10 +125,34 @@ class LeverageEngineTest {
         assertTrue(longLiq < entry, "多头强平价应低于开仓价");
         assertTrue(shortLiq > entry, "空头强平价应高于开仓价");
 
-        // 1 - 1/10 + 0.005 = 0.905
-        assertEquals(entry * (1 - 0.1 + maintenance), longLiq, EPS);
-        // 1 + 1/10 - 0.005 = 1.095
-        assertEquals(entry * (1 + 0.1 - maintenance), shortLiq, EPS);
+        // 1 - (1 - 0.1) / 10 = 0.91
+        assertEquals(entry * (1 - (1 - 0.1) / leverage), longLiq, EPS);
+        // 1 + (1 - 0.1) / 10 = 1.09
+        assertEquals(entry * (1 + (1 - 0.1) / leverage), shortLiq, EPS);
+    }
+
+    /**
+     * 显示的强平价与后台巡检必须同口径：价格恰好落在强平价上时，
+     * 保证金率等于 {@code liquidationThreshold} 且 {@code shouldLiquidate} 判真。
+     */
+    @Test
+    void displayedLiquidationPriceMatchesShouldLiquidate() {
+        LeverageEngine engine = new LeverageEngine(config());
+        double entry = 100.0;
+        double quantity = 1000;
+
+        for (int leverage : new int[]{1, 5, 10, 50, 100}) {
+            double margin = engine.requiredMargin(entry, quantity, leverage);
+            MarginPosition position = position(entry, quantity, leverage,
+                    TradeDirection.LONG, margin);
+            double liq = engine.liquidationPrice(entry, leverage, TradeDirection.LONG);
+
+            assertEquals(engine.getLiquidationThreshold(),
+                    engine.marginRatio(position, liq), 1e-6,
+                    "触及显示强平价时保证金率必须恰为强平阈值（杠杆 " + leverage + "x）");
+            assertTrue(engine.shouldLiquidate(position, liq),
+                    "显示强平价必须被巡检判为强平（杠杆 " + leverage + "x）");
+        }
     }
 
     @Test

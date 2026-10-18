@@ -34,5 +34,9 @@ public class PlayerLeverageListener implements Listener {
         // 释放图表冷却记录：不清理的话该 Map 会随玩家数单调增长（慢泄漏）。
         dev.onelili.mstock.chart.ChartService charts = plugin.getChartService();
         if (charts != null) charts.clearCooldown(event.getPlayer().getUniqueId());
+        // 释放 GUI 回调与返回目标（数量输入 / 搜索 / 图表返回）：
+        // 回调 lambda 强引用 Player 与 Inventory，不清理会让已退出玩家无法 GC。
+        dev.onelili.mstock.command.MStockCommand executor = plugin.getCommandExecutor();
+        if (executor != null) executor.clearPlayerState(event.getPlayer().getUniqueId());
     }
 }

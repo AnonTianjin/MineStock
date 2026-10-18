@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class PortfolioGUI {
@@ -76,13 +77,17 @@ public class PortfolioGUI {
                 });
                 return;
             }
-            List<StockInfo> infos = new ArrayList<>();
+            // 并发取价（与 PortfolioHubGui 同款 allOf 写法）：常规异步池只有 2 个线程，
+            // 逐个 .get() 串行等待会让一个多持仓玩家占住线程 30×RTT，
+            // 两人同时打开即占满整个池，所有下单 / 平仓都要排队。
+            List<CompletableFuture<StockInfo>> priceFutures = new ArrayList<>();
             for (Holding h : holdings) {
-                try {
-                    infos.add(api.fetch(h.getStockCode()).get());
-                } catch (Exception e) {
-                    infos.add(null);
-                }
+                priceFutures.add(api.fetch(h.getStockCode()).exceptionally(e -> null));
+            }
+            CompletableFuture.allOf(priceFutures.toArray(new CompletableFuture[0])).join();
+            List<StockInfo> infos = new ArrayList<>();
+            for (CompletableFuture<StockInfo> priceFuture : priceFutures) {
+                infos.add(priceFuture.join());
             }
 
             runSync(() -> {
