@@ -9,11 +9,11 @@ depend: [ Vault ]
 commands:
   mstock:
     description: 股票市场命令
-    usage: /mstock [menu|help [页码]|leverage|margin|forex|futures|chart|back|recommended|simulation|<代码>|buy|sell|portfolio|positions|pg|reload]
+    usage: /mstock [menu|help [页码]|leverage|margin|forex|futures|chart|back|recommended|simulation|<代码>|buy|sell|short|cover|portfolio|positions|pg|reload]
     permission: minestock.use
   stock:
     description: 股票市场命令（/mstock 的别名，行为与原版一致）
-    usage: /stock [menu|help [页码]|leverage|margin|forex|futures|chart|back|recommended|simulation|<代码>|buy|sell|portfolio|positions|pg|reload]
+    usage: /mstock [menu|help [页码]|leverage|margin|forex|futures|chart|back|recommended|simulation|<代码>|buy|sell|short|cover|portfolio|positions|pg|reload]
     permission: minestock.use
 permissions:
   minestock.use:
